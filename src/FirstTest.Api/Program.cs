@@ -1,6 +1,7 @@
 using FirstTest.Api.Data;
 using FirstTest.Api.Endpoints;
 using FirstTest.Api.Migrations;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,8 +15,7 @@ builder.Services.AddSingleton<IDbConnectionFactory>(
     _ => new NpgsqlConnectionFactory(connectionString));
 builder.Services.AddScoped<ITodoRepository, TodoRepository>();
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddOpenApi();
 
 const string CorsPolicy = "ClientCors";
 builder.Services.AddCors(options =>
@@ -40,8 +40,8 @@ if (builder.Configuration.GetValue("RunMigrationsOnStartup", true))
 // --- Pipeline --------------------------------------------------------------
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    app.MapOpenApi();
+    app.MapScalarApiReference();
 }
 
 app.UseCors(CorsPolicy);

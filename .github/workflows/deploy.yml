@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  DOTNET_VERSION: '8.0.x'
+  DOTNET_VERSION: '10.0.x'
   # Change this to your globally-unique App Service name.
   AZURE_WEBAPP_NAME: firsttest-api
   PUBLISH_DIR: ./publish
