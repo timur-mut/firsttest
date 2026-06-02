@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "appName": { "value": "firsttest" },
+    "swaLocation": { "value": "westeurope" },
+    "pgConnectionString": { "value": "REPLACE_WITH_NEON_OR_SUPABASE_CONNECTION_STRING" },
+    "clientOrigin": { "value": "" }
+  }
+}

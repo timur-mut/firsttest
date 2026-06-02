@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "FirstTest (local)",
+      "Group": "Servers",
+      "Host": "db",
+      "Port": 5432,
+      "MaintenanceDB": "firsttest",
+      "Username": "firsttest",
+      "SSLMode": "prefer"
+    }
+  }
+}

@@ -1,0 +1,37 @@
+name: Deploy API to Azure App Service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  # Change this to your globally-unique App Service name.
+  AZURE_WEBAPP_NAME: firsttest-api
+  PUBLISH_DIR: ./publish
+
+jobs:
+  deploy-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Publish
+        run: dotnet publish src/FirstTest.Api/FirstTest.Api.csproj -c Release -o ${{ env.PUBLISH_DIR }}
+
+      # Deploys using the publish profile stored in the
+      # AZURE_WEBAPP_PUBLISH_PROFILE repository secret (no Azure login needed).
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: ${{ env.PUBLISH_DIR }}

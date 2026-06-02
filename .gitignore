@@ -1,0 +1,22 @@
+# --- .NET ---
+bin/
+obj/
+*.user
+.vs/
+*.suo
+
+# --- Node / client ---
+node_modules/
+client/dist/
+client/.env
+client/.env.local
+
+# --- Env / secrets ---
+.env
+.env.*.local
+*.local.settings.json
+
+# --- OS / editors ---
+.DS_Store
+Thumbs.db
+.idea/
