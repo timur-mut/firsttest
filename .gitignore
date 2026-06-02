@@ -20,3 +20,6 @@ client/.env.local
 .DS_Store
 Thumbs.db
 .idea/
+
+# Claude local settings
+.claude/

@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { todosApi } from './api/todos';
 import type { TodoItem } from './types';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Trash2 } from 'lucide-react';
 
 export default function App() {
   const [todos, setTodos] = useState<TodoItem[]>([]);
@@ -45,43 +49,64 @@ export default function App() {
   }
 
   return (
-    <main className="container">
-      <h1>FirstTest</h1>
-      <p className="subtitle">.NET Minimal API + Dapper + DbUp · React + Vite</p>
+    <main className="mx-auto max-w-xl px-4 py-12">
+      <h1 className="text-2xl font-semibold tracking-tight">FirstTest</h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        .NET Minimal API + Dapper + DbUp · React + Vite
+      </p>
 
-      <form onSubmit={addTodo} className="add-form">
-        <input
+      <form onSubmit={addTodo} className="mt-6 flex gap-2">
+        <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="What needs doing?"
           aria-label="New todo title"
         />
-        <button type="submit">Add</button>
+        <Button type="submit">Add</Button>
       </form>
 
-      {error && <p className="error">Could not reach the API: {error}</p>}
-      {loading && <p>Loading…</p>}
+      {error && (
+        <p className="mt-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          Could not reach the API: {error}
+        </p>
+      )}
+      {loading && <p className="mt-4 text-sm text-muted-foreground">Loading…</p>}
 
-      <ul className="todo-list">
+      <ul className="mt-4 space-y-2">
         {todos.map((todo) => (
-          <li key={todo.id} className={todo.isComplete ? 'done' : ''}>
-            <label>
-              <input
-                type="checkbox"
+          <li
+            key={todo.id}
+            className="flex items-center justify-between rounded-md border bg-card px-3 py-2"
+          >
+            <label className="flex cursor-pointer items-center gap-3">
+              <Checkbox
                 checked={todo.isComplete}
-                onChange={() => toggle(todo)}
+                onCheckedChange={() => toggle(todo)}
               />
-              <span>{todo.title}</span>
+              <span
+                className={
+                  todo.isComplete ? 'text-muted-foreground line-through' : ''
+                }
+              >
+                {todo.title}
+              </span>
             </label>
-            <button className="link" onClick={() => remove(todo.id)}>
-              delete
-            </button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => remove(todo.id)}
+              aria-label="Delete todo"
+            >
+              <Trash2 className="text-destructive" />
+            </Button>
           </li>
         ))}
       </ul>
 
       {!loading && todos.length === 0 && !error && (
-        <p className="empty">No todos yet — add one above.</p>
+        <p className="mt-4 text-sm text-muted-foreground">
+          No todos yet — add one above.
+        </p>
       )}
     </main>
   );
