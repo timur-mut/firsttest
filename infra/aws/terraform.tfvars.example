@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and adjust. All values have sensible defaults.
+
+region  = "us-east-1"
+project = "firsttest"
+
+# Set to your GitHub repo (owner/name) to provision the CI OIDC deploy role.
+# Leave empty to skip CI resources.
+github_repo = "your-org/first-test"
+
+# Optional overrides:
+# db_instance_class = "db.t4g.micro"
+# apprunner_cpu     = "1024"
+# apprunner_memory  = "2048"

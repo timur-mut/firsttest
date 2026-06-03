@@ -1,0 +1,88 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'client/**'
+      - '.github/workflows/deploy-aws.yml'
+  workflow_dispatch:
+
+# Required for GitHub OIDC -> AWS authentication (no stored AWS keys).
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-api:
+    name: Build & deploy API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            -f src/FirstTest.Api/Dockerfile \
+            -t "$REGISTRY/$REPOSITORY:latest" \
+            -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" \
+            .
+          docker push "$REGISTRY/$REPOSITORY:latest"
+          docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
+
+      - name: Trigger App Runner deployment
+        run: |
+          aws apprunner start-deployment \
+            --service-arn "${{ vars.APP_RUNNER_SERVICE_ARN }}"
+
+  deploy-client:
+    name: Build & deploy client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Build client
+        working-directory: client
+        env:
+          # Bake the API origin into the static build.
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Sync to S3
+        run: |
+          aws s3 sync client/dist "s3://${{ vars.S3_BUCKET }}" --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/*"

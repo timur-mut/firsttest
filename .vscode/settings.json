@@ -13,5 +13,9 @@
       "extensionId": "ms-dotnettools.vscode-dotnet-runtime",
       "path": "/usr/local/share/dotnet/dotnet"
     }
+  ],
+  "debug.javascript.resolveSourceMapLocations": [
+    "${workspaceFolder}/**",
+    "!**/node_modules/**"
   ]
 }
