@@ -4,6 +4,7 @@ import type { TodoItem } from './types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ThemeSwitcher } from '@/components/theme-switcher';
 import { Trash2 } from 'lucide-react';
 
 export default function App() {
@@ -50,10 +51,15 @@ export default function App() {
 
   return (
     <main className="mx-auto max-w-xl px-4 py-12">
-      <h1 className="text-2xl font-semibold tracking-tight">FirstTest</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        .NET Minimal API + Dapper + DbUp · React + Vite
-      </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">FirstTest</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            .NET Minimal API + Dapper + DbUp · React + Vite
+          </p>
+        </div>
+        <ThemeSwitcher />
+      </div>
 
       <form onSubmit={addTodo} className="mt-6 flex gap-2">
         <Input
