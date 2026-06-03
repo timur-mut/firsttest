@@ -1,9 +1,9 @@
-# Managed PostgreSQL. Private (no public endpoint); the API reaches it over the
-# VPC connector and runs DbUp migrations on startup.
+# Managed PostgreSQL, private. Backups disabled to stay within the free plan
+# (raise db_backup_retention after upgrading the account if you want PITR).
 
 resource "random_password" "db" {
   length  = 24
-  special = false # keep the password URL/connection-string friendly
+  special = false
 }
 
 resource "aws_db_subnet_group" "this" {
@@ -18,10 +18,9 @@ resource "aws_db_instance" "this" {
   engine_version = var.db_engine_version
   instance_class = var.db_instance_class
 
-  allocated_storage     = var.db_allocated_storage
-  max_allocated_storage = var.db_allocated_storage * 2
-  storage_type          = "gp3"
-  storage_encrypted     = true
+  allocated_storage = var.db_allocated_storage
+  storage_type      = "gp2"
+  storage_encrypted = true
 
   db_name  = var.db_name
   username = var.db_username
@@ -32,7 +31,7 @@ resource "aws_db_instance" "this" {
   publicly_accessible    = false
   multi_az               = false
 
-  backup_retention_period = 7
+  backup_retention_period = var.db_backup_retention
   skip_final_snapshot     = true
   deletion_protection     = false
   apply_immediately       = true

@@ -4,13 +4,18 @@ output "region" {
 }
 
 output "api_url" {
-  description = "Public HTTPS URL of the App Runner API."
-  value       = "https://${aws_apprunner_service.api.service_url}"
+  description = "Public HTTPS URL of the API (CloudFront in front of Beanstalk)."
+  value       = "https://${aws_cloudfront_distribution.api.domain_name}"
 }
 
-output "apprunner_service_arn" {
-  description = "App Runner service ARN (set as APP_RUNNER_SERVICE_ARN in GitHub)."
-  value       = aws_apprunner_service.api.arn
+output "beanstalk_env" {
+  description = "Elastic Beanstalk environment name."
+  value       = aws_elastic_beanstalk_environment.api.name
+}
+
+output "beanstalk_cname" {
+  description = "Beanstalk environment hostname (HTTP origin behind CloudFront)."
+  value       = aws_elastic_beanstalk_environment.api.cname
 }
 
 output "ecr_repository_url" {
@@ -24,21 +29,21 @@ output "client_url" {
 }
 
 output "client_bucket" {
-  description = "S3 bucket name for the client build (set as S3_BUCKET in GitHub)."
+  description = "S3 bucket name for the client build."
   value       = aws_s3_bucket.client.bucket
 }
 
 output "cloudfront_distribution_id" {
-  description = "CloudFront distribution ID (set as CLOUDFRONT_DISTRIBUTION_ID in GitHub)."
+  description = "Client CloudFront distribution ID."
   value       = aws_cloudfront_distribution.client.id
 }
 
 output "rds_endpoint" {
-  description = "RDS endpoint (private; reachable only from inside the VPC)."
+  description = "RDS endpoint (private)."
   value       = aws_db_instance.this.address
 }
 
 output "github_actions_role_arn" {
-  description = "IAM role ARN for GitHub Actions OIDC (set as AWS_ROLE_ARN). Empty if github_repo was not set."
+  description = "IAM role ARN for GitHub Actions OIDC (empty if github_repo unset)."
   value       = local.create_ci ? aws_iam_role.github_actions[0].arn : ""
 }

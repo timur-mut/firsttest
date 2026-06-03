@@ -1,7 +1,7 @@
 variable "region" {
   description = "AWS region for the API, database, and supporting resources."
   type        = string
-  default     = "us-east-1"
+  default     = "eu-north-1"
 }
 
 variable "project" {
@@ -44,7 +44,7 @@ variable "db_allocated_storage" {
 variable "db_engine_version" {
   description = "PostgreSQL major.minor version."
   type        = string
-  default     = "16.4"
+  default     = "16"
 }
 
 # --- API container ------------------------------------------------------------
@@ -77,4 +77,16 @@ variable "github_repo" {
   description = "GitHub repo in 'owner/name' form, used to scope the OIDC deploy role. Leave empty to skip creating CI resources."
   type        = string
   default     = ""
+}
+
+variable "db_backup_retention" {
+  description = "RDS automated backup retention in days. 0 disables backups (free-plan friendly)."
+  type        = number
+  default     = 0
+}
+
+variable "instance_type" {
+  description = "EC2 instance type for the Beanstalk environment (t3.micro is free-tier eligible)."
+  type        = string
+  default     = "t3.micro"
 }
