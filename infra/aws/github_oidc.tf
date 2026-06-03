@@ -66,7 +66,7 @@ data "aws_iam_policy_document" "github_deploy" {
     actions = [
       "autoscaling:Describe*", "ec2:Describe*", "cloudformation:Describe*",
       "cloudformation:GetTemplate", "elasticloadbalancing:Describe*",
-      "s3:PutObject", "s3:GetObject", "s3:ListBucket",
+      "s3:*",
     ]
     resources = ["*"]
   }
