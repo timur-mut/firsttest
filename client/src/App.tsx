@@ -27,6 +27,9 @@ export default function App() {
   // Set a tick after dragstart so the card collapses to a single placeholder
   // (deferred so the browser captures the drag image before it's hidden).
   const [liftedId, setLiftedId] = useState<number | null>(null);
+  // Height of the dragged card, so the placeholder matches it exactly and the
+  // list doesn't jump when the card collapses.
+  const [draggedHeight, setDraggedHeight] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   // Refs mirror the drag state so dragend reads current values, not a stale
   // closure. The dragged card is never moved in the DOM during the drag (that
@@ -86,6 +89,7 @@ export default function App() {
   function handleDragStart(e: React.DragEvent, id: number) {
     setDraggingId(id);
     draggingIdRef.current = id;
+    setDraggedHeight(e.currentTarget.getBoundingClientRect().height);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(id)); // required for Firefox
     // Collapse the source on the next tick (after the drag image is captured),
@@ -104,29 +108,28 @@ export default function App() {
     );
   }
 
-  // Hovering a card sets the placeholder before or after it (by pointer Y),
-  // without moving the dragged card.
-  function handleCardDragOver(e: React.DragEvent, over: TodoItem) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
-    const draggedId = draggingIdRef.current;
-    if (draggedId === null || over.id === draggedId) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const after = e.clientY > rect.top + rect.height / 2;
-    const colItems = todos.filter((t) => t.status === over.status && t.id !== draggedId);
-    const pos = colItems.findIndex((t) => t.id === over.id);
-    const beforeId = after ? colItems[pos + 1]?.id ?? null : over.id;
-    setTarget(over.status, beforeId);
-  }
-
-  // Hovering empty column space targets the end of that column.
+  // Single column-level handler: compute the insertion point from the pointer's
+  // Y against each card's midpoint. Reading live DOM positions (and excluding
+  // the collapsed dragged card) keeps the target stable even as the placeholder
+  // shifts cards around — no flicker when hovering a card's top half.
   function handleColumnDragOver(e: React.DragEvent, status: TodoStatus) {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (draggingIdRef.current === null) return;
-    setTarget(status, null);
+    const draggedId = draggingIdRef.current;
+    if (draggedId === null) return;
+
+    const cards = [...e.currentTarget.querySelectorAll<HTMLElement>('li[data-card-id]')]
+      .filter((el) => Number(el.dataset.cardId) !== draggedId && el.offsetParent !== null);
+
+    let beforeId: number | null = null;
+    for (const el of cards) {
+      const rect = el.getBoundingClientRect();
+      if (e.clientY < rect.top + rect.height / 2) {
+        beforeId = Number(el.dataset.cardId);
+        break;
+      }
+    }
+    setTarget(status, beforeId);
   }
 
   async function handleDragEnd() {
@@ -208,7 +211,8 @@ export default function App() {
           const placeholder = (
             <li
               aria-hidden
-              className="h-11 rounded-md border-2 border-dashed border-primary bg-primary/5"
+              style={{ height: draggedHeight ?? undefined }}
+              className="rounded-md border-2 border-dashed border-primary bg-primary/5"
             />
           );
           return (
@@ -230,9 +234,9 @@ export default function App() {
                   <Fragment key={todo.id}>
                     {ph && ph.beforeId === todo.id && placeholder}
                     <li
+                      data-card-id={todo.id}
                       draggable={editingId !== todo.id}
                       onDragStart={(e) => handleDragStart(e, todo.id)}
-                      onDragOver={(e) => handleCardDragOver(e, todo)}
                       onDrop={(e) => e.preventDefault()}
                       onDragEnd={handleDragEnd}
                       className={`items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 ${
