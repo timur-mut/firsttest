@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { todosApi } from './api/todos';
-import type { TodoItem } from './types';
+import type { TodoItem, TodoStatus } from './types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
 import { ThemeSwitcher } from '@/components/theme-switcher';
 import { Pencil, Trash2, Check, X, GripVertical } from 'lucide-react';
+
+const COLUMNS: { status: TodoStatus; title: string }[] = [
+  { status: 'todo', title: 'Todo' },
+  { status: 'active', title: 'Active' },
+  { status: 'done', title: 'Done' },
+];
+
+const serialize = (list: TodoItem[]) =>
+  list.map((t) => `${t.id}:${t.status}`).join(',');
 
 export default function App() {
   const [todos, setTodos] = useState<TodoItem[]>([]);
@@ -14,10 +22,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState('');
-  const [dragEnabled, setDragEnabled] = useState(false);
   const [draggingId, setDraggingId] = useState<number | null>(null);
-  // Snapshot of the order when a drag begins, so we only persist on a real change.
-  const orderBeforeDrag = useRef<number[] | null>(null);
+  // Snapshot of the order/columns when a drag begins, to persist only on change.
+  const orderBeforeDrag = useRef<string | null>(null);
 
   async function refresh() {
     try {
@@ -42,14 +49,6 @@ export default function App() {
     await refresh();
   }
 
-  async function toggle(todo: TodoItem) {
-    await todosApi.update(todo.id, {
-      title: todo.title,
-      isComplete: !todo.isComplete,
-    });
-    await refresh();
-  }
-
   async function remove(id: number) {
     await todosApi.remove(id);
     await refresh();
@@ -69,10 +68,7 @@ export default function App() {
     const trimmed = editTitle.trim();
     if (!trimmed) return;
     if (trimmed !== todo.title) {
-      await todosApi.update(todo.id, {
-        title: trimmed,
-        isComplete: todo.isComplete,
-      });
+      await todosApi.update(todo.id, { title: trimmed, status: todo.status });
       await refresh();
     }
     cancelEdit();
@@ -80,40 +76,72 @@ export default function App() {
 
   function handleDragStart(e: React.DragEvent, id: number) {
     setDraggingId(id);
-    orderBeforeDrag.current = todos.map((t) => t.id);
+    orderBeforeDrag.current = serialize(todos);
     e.dataTransfer.effectAllowed = 'move';
   }
 
-  // Live preview: slot the dragged item into the hovered position so the list
-  // reflows and the dragged row shows as a placeholder where it will land.
-  function handleDragOver(e: React.DragEvent, overId: number) {
+  // Hovering over a card: slot the dragged card into that position (and adopt
+  // the hovered card's column) so the board previews the drop live.
+  function handleCardDragOver(e: React.DragEvent, over: TodoItem) {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
-    if (draggingId === null || draggingId === overId) return;
+    if (draggingId === null || draggingId === over.id) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const after = e.clientY > rect.top + rect.height / 2;
+
     setTodos((prev) => {
-      const from = prev.findIndex((t) => t.id === draggingId);
-      const to = prev.findIndex((t) => t.id === overId);
-      if (from === -1 || to === -1 || from === to) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
+      const dragged = prev.find((t) => t.id === draggingId);
+      if (!dragged) return prev;
+      const next = prev.filter((t) => t.id !== draggingId);
+      const overIdx = next.findIndex((t) => t.id === over.id);
+      if (overIdx === -1) return prev;
+      next.splice(overIdx + (after ? 1 : 0), 0, { ...dragged, status: over.status });
       return next;
     });
   }
 
-  // dragend always fires at the end of a drag (drop, cancel, or release).
-  // The list already shows the previewed order, so persist it if it changed.
+  // Hovering over column space (e.g. an empty column or below the last card):
+  // move the dragged card to the end of that column.
+  function handleColumnDragOver(e: React.DragEvent, status: TodoStatus) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggingId === null) return;
+
+    setTodos((prev) => {
+      const dragged = prev.find((t) => t.id === draggingId);
+      if (!dragged) return prev;
+      const next = prev.filter((t) => t.id !== draggingId);
+      let insertAt = next.length;
+      for (let i = next.length - 1; i >= 0; i--) {
+        if (next[i].status === status) {
+          insertAt = i + 1;
+          break;
+        }
+      }
+      next.splice(insertAt, 0, { ...dragged, status });
+      return next;
+    });
+  }
+
+  // dragend always fires at the end of a drag. The board already shows the
+  // previewed order, so persist the dragged card's destination column.
   async function handleDragEnd() {
     const before = orderBeforeDrag.current;
     orderBeforeDrag.current = null;
+    const draggedId = draggingId;
     setDraggingId(null);
-    setDragEnabled(false);
+    if (draggedId === null) return;
 
-    const after = todos.map((t) => t.id);
-    if (!before || before.join(',') === after.join(',')) return;
+    if (before !== null && before === serialize(todos)) return; // nothing moved
+
+    const dragged = todos.find((t) => t.id === draggedId);
+    if (!dragged) return;
+    const ids = todos.filter((t) => t.status === dragged.status).map((t) => t.id);
 
     try {
-      setTodos(await todosApi.reorder(after));
+      setTodos(await todosApi.reorder(dragged.status, ids));
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -122,7 +150,7 @@ export default function App() {
   }
 
   return (
-    <main className="mx-auto max-w-xl px-4 py-12">
+    <main className="mx-auto max-w-5xl px-4 py-12">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">FirstTest</h1>
@@ -150,103 +178,116 @@ export default function App() {
       )}
       {loading && <p className="mt-4 text-sm text-muted-foreground">Loading…</p>}
 
-      <ul className="mt-4 space-y-2">
-        {todos.map((todo) => (
-          <li
-            key={todo.id}
-            draggable={dragEnabled && editingId !== todo.id}
-            onDragStart={(e) => handleDragStart(e, todo.id)}
-            onDragOver={(e) => handleDragOver(e, todo.id)}
-            onDrop={(e) => e.preventDefault()}
-            onDragEnd={handleDragEnd}
-            className={`flex items-center justify-between gap-2 rounded-md border px-3 py-2 ${
-              draggingId === todo.id
-                ? 'border-dashed border-primary bg-primary/5 [&>*]:invisible'
-                : 'border-border bg-card'
-            }`}
-          >
-            {editingId === todo.id ? (
-              <>
-                <Input
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') saveEdit(todo);
-                    if (e.key === 'Escape') cancelEdit();
-                  }}
-                  aria-label="Edit todo title"
-                  autoFocus
-                />
-                <div className="flex shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => saveEdit(todo)}
-                    aria-label="Save todo"
+      <div className="mt-6 grid gap-4 sm:grid-cols-3">
+        {COLUMNS.map((col) => {
+          const items = todos.filter((t) => t.status === col.status);
+          return (
+            <section
+              key={col.status}
+              onDragOver={(e) => handleColumnDragOver(e, col.status)}
+              onDrop={(e) => e.preventDefault()}
+              className="flex flex-col rounded-lg border bg-muted/30 p-3"
+            >
+              <header className="mb-3 flex items-center justify-between px-1">
+                <h2 className="text-sm font-semibold">{col.title}</h2>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                  {items.length}
+                </span>
+              </header>
+
+              <ul className="flex min-h-24 flex-1 flex-col gap-2">
+                {items.map((todo) => (
+                  <li
+                    key={todo.id}
+                    draggable={editingId !== todo.id}
+                    onDragStart={(e) => handleDragStart(e, todo.id)}
+                    onDragOver={(e) => handleCardDragOver(e, todo)}
+                    onDrop={(e) => e.preventDefault()}
+                    onDragEnd={handleDragEnd}
+                    className={`flex items-center justify-between gap-2 rounded-md border px-3 py-2 ${
+                      draggingId === todo.id
+                        ? 'border-dashed border-primary bg-primary/5 [&>*]:invisible'
+                        : 'cursor-grab border-border bg-card active:cursor-grabbing'
+                    }`}
                   >
-                    <Check />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={cancelEdit}
-                    aria-label="Cancel edit"
-                  >
-                    <X />
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex min-w-0 items-center gap-1">
-                  <button
-                    type="button"
-                    onMouseDown={() => setDragEnabled(true)}
-                    onMouseUp={() => setDragEnabled(false)}
-                    className="shrink-0 cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
-                    aria-label="Drag to reorder"
-                  >
-                    <GripVertical className="size-4" />
-                  </button>
-                  <label className="flex min-w-0 cursor-pointer items-center gap-3">
-                    <Checkbox
-                      checked={todo.isComplete}
-                      onCheckedChange={() => toggle(todo)}
-                    />
-                    <span
-                      className={
-                        todo.isComplete
-                          ? 'truncate text-muted-foreground line-through'
-                          : 'truncate'
-                      }
-                    >
-                      {todo.title}
-                    </span>
-                  </label>
-                </div>
-                <div className="flex shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => startEdit(todo)}
-                    aria-label="Edit todo"
-                  >
-                    <Pencil />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => remove(todo.id)}
-                    aria-label="Delete todo"
-                  >
-                    <Trash2 className="text-destructive" />
-                  </Button>
-                </div>
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
+                    {editingId === todo.id ? (
+                      <>
+                        <Input
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveEdit(todo);
+                            if (e.key === 'Escape') cancelEdit();
+                          }}
+                          aria-label="Edit todo title"
+                          autoFocus
+                        />
+                        <div className="flex shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => saveEdit(todo)}
+                            aria-label="Save todo"
+                          >
+                            <Check />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={cancelEdit}
+                            aria-label="Cancel edit"
+                          >
+                            <X />
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <GripVertical className="size-4 shrink-0 text-muted-foreground" />
+                          <span
+                            className={`truncate ${
+                              todo.status === 'done'
+                                ? 'text-muted-foreground line-through'
+                                : ''
+                            }`}
+                          >
+                            {todo.title}
+                          </span>
+                        </div>
+                        <div className="flex shrink-0">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => startEdit(todo)}
+                            aria-label="Edit todo"
+                          >
+                            <Pencil />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => remove(todo.id)}
+                            aria-label="Delete todo"
+                          >
+                            <Trash2 className="text-destructive" />
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </li>
+                ))}
+
+                {items.length === 0 && (
+                  <li className="rounded-md border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
+                    Drop here
+                  </li>
+                )}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
 
       {!loading && todos.length === 0 && !error && (
         <p className="mt-4 text-sm text-muted-foreground">

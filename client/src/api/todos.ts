@@ -1,5 +1,6 @@
 import type {
   TodoItem,
+  TodoStatus,
   CreateTodoRequest,
   UpdateTodoRequest,
 } from '../types';
@@ -35,10 +36,13 @@ export const todosApi = {
   remove: (id: number) =>
     fetch(`${BASE}/${id}`, { method: 'DELETE' }).then(handle<void>),
 
-  reorder: (ids: number[]) =>
+  // Reorder a single column: assigns `status` and sequential positions to the
+  // given ids in order. Moving a card between columns is a reorder of the
+  // destination column.
+  reorder: (status: TodoStatus, ids: number[]) =>
     fetch(`${BASE}/reorder`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids }),
+      body: JSON.stringify({ status, ids }),
     }).then(handle<TodoItem[]>),
 };

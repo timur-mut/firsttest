@@ -9,5 +9,5 @@ public interface ITodoRepository
     Task<TodoItem> CreateAsync(CreateTodoRequest request);
     Task<TodoItem?> UpdateAsync(int id, UpdateTodoRequest request);
     Task<bool> DeleteAsync(int id);
-    Task ReorderAsync(IReadOnlyList<int> orderedIds);
+    Task ReorderAsync(string status, IReadOnlyList<int> orderedIds);
 }
