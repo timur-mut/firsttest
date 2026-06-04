@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { todosApi } from './api/todos';
 import type { TodoItem } from './types';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,8 @@ export default function App() {
   const [editTitle, setEditTitle] = useState('');
   const [dragEnabled, setDragEnabled] = useState(false);
   const [draggingId, setDraggingId] = useState<number | null>(null);
-  const [dragOverId, setDragOverId] = useState<number | null>(null);
+  // Snapshot of the order when a drag begins, so we only persist on a real change.
+  const orderBeforeDrag = useRef<number[] | null>(null);
 
   async function refresh() {
     try {
@@ -79,39 +80,40 @@ export default function App() {
 
   function handleDragStart(e: React.DragEvent, id: number) {
     setDraggingId(id);
+    orderBeforeDrag.current = todos.map((t) => t.id);
     e.dataTransfer.effectAllowed = 'move';
   }
 
-  function handleDragOver(e: React.DragEvent, id: number) {
+  // Live preview: slot the dragged item into the hovered position so the list
+  // reflows and the dragged row shows as a placeholder where it will land.
+  function handleDragOver(e: React.DragEvent, overId: number) {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (id !== dragOverId) setDragOverId(id);
+    if (draggingId === null || draggingId === overId) return;
+    setTodos((prev) => {
+      const from = prev.findIndex((t) => t.id === draggingId);
+      const to = prev.findIndex((t) => t.id === overId);
+      if (from === -1 || to === -1 || from === to) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
   }
 
-  function handleDragEnd() {
-    setDragEnabled(false);
+  // dragend always fires at the end of a drag (drop, cancel, or release).
+  // The list already shows the previewed order, so persist it if it changed.
+  async function handleDragEnd() {
+    const before = orderBeforeDrag.current;
+    orderBeforeDrag.current = null;
     setDraggingId(null);
-    setDragOverId(null);
-  }
-
-  async function handleDrop(targetId: number) {
-    const sourceId = draggingId;
-    setDraggingId(null);
-    setDragOverId(null);
     setDragEnabled(false);
-    if (sourceId === null || sourceId === targetId) return;
 
-    const reordered = [...todos];
-    const from = reordered.findIndex((t) => t.id === sourceId);
-    const to = reordered.findIndex((t) => t.id === targetId);
-    if (from === -1 || to === -1) return;
-
-    const [moved] = reordered.splice(from, 1);
-    reordered.splice(to, 0, moved);
-    setTodos(reordered); // optimistic
+    const after = todos.map((t) => t.id);
+    if (!before || before.join(',') === after.join(',')) return;
 
     try {
-      setTodos(await todosApi.reorder(reordered.map((t) => t.id)));
+      setTodos(await todosApi.reorder(after));
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -155,14 +157,12 @@ export default function App() {
             draggable={dragEnabled && editingId !== todo.id}
             onDragStart={(e) => handleDragStart(e, todo.id)}
             onDragOver={(e) => handleDragOver(e, todo.id)}
-            onDrop={() => handleDrop(todo.id)}
+            onDrop={(e) => e.preventDefault()}
             onDragEnd={handleDragEnd}
-            className={`flex items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 transition-colors ${
-              draggingId === todo.id ? 'opacity-50' : ''
-            } ${
-              dragOverId === todo.id && draggingId !== todo.id
-                ? 'border-primary'
-                : ''
+            className={`flex items-center justify-between gap-2 rounded-md border px-3 py-2 ${
+              draggingId === todo.id
+                ? 'border-dashed border-primary bg-primary/5 [&>*]:invisible'
+                : 'border-border bg-card'
             }`}
           >
             {editingId === todo.id ? (
