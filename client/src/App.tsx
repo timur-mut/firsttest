@@ -5,13 +5,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ThemeSwitcher } from '@/components/theme-switcher';
-import { Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Check, X } from 'lucide-react';
 
 export default function App() {
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState('');
 
   async function refresh() {
     try {
@@ -49,6 +51,29 @@ export default function App() {
     await refresh();
   }
 
+  function startEdit(todo: TodoItem) {
+    setEditingId(todo.id);
+    setEditTitle(todo.title);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditTitle('');
+  }
+
+  async function saveEdit(todo: TodoItem) {
+    const trimmed = editTitle.trim();
+    if (!trimmed) return;
+    if (trimmed !== todo.title) {
+      await todosApi.update(todo.id, {
+        title: trimmed,
+        isComplete: todo.isComplete,
+      });
+      await refresh();
+    }
+    cancelEdit();
+  }
+
   return (
     <main className="mx-auto max-w-xl px-4 py-12">
       <div className="flex items-start justify-between gap-4">
@@ -82,29 +107,74 @@ export default function App() {
         {todos.map((todo) => (
           <li
             key={todo.id}
-            className="flex items-center justify-between rounded-md border bg-card px-3 py-2"
+            className="flex items-center justify-between gap-2 rounded-md border bg-card px-3 py-2"
           >
-            <label className="flex cursor-pointer items-center gap-3">
-              <Checkbox
-                checked={todo.isComplete}
-                onCheckedChange={() => toggle(todo)}
-              />
-              <span
-                className={
-                  todo.isComplete ? 'text-muted-foreground line-through' : ''
-                }
-              >
-                {todo.title}
-              </span>
-            </label>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => remove(todo.id)}
-              aria-label="Delete todo"
-            >
-              <Trash2 className="text-destructive" />
-            </Button>
+            {editingId === todo.id ? (
+              <>
+                <Input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveEdit(todo);
+                    if (e.key === 'Escape') cancelEdit();
+                  }}
+                  aria-label="Edit todo title"
+                  autoFocus
+                />
+                <div className="flex shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => saveEdit(todo)}
+                    aria-label="Save todo"
+                  >
+                    <Check />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={cancelEdit}
+                    aria-label="Cancel edit"
+                  >
+                    <X />
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="flex cursor-pointer items-center gap-3">
+                  <Checkbox
+                    checked={todo.isComplete}
+                    onCheckedChange={() => toggle(todo)}
+                  />
+                  <span
+                    className={
+                      todo.isComplete ? 'text-muted-foreground line-through' : ''
+                    }
+                  >
+                    {todo.title}
+                  </span>
+                </label>
+                <div className="flex shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => startEdit(todo)}
+                    aria-label="Edit todo"
+                  >
+                    <Pencil />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => remove(todo.id)}
+                    aria-label="Delete todo"
+                  >
+                    <Trash2 className="text-destructive" />
+                  </Button>
+                </div>
+              </>
+            )}
           </li>
         ))}
       </ul>
