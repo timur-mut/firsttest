@@ -34,4 +34,11 @@ export const todosApi = {
 
   remove: (id: number) =>
     fetch(`${BASE}/${id}`, { method: 'DELETE' }).then(handle<void>),
+
+  reorder: (ids: number[]) =>
+    fetch(`${BASE}/reorder`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    }).then(handle<TodoItem[]>),
 };
