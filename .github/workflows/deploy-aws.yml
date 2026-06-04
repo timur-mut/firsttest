@@ -60,6 +60,28 @@ jobs:
           aws elasticbeanstalk update-environment \
             --environment-name "$EB_ENV_NAME" --version-label "$VERSION"
 
+          # update-environment is fire-and-forget: wait for the rollout and
+          # verify the new version actually went live (EB rolls back to the
+          # previous version on failure, so a green job != a successful deploy).
+          echo "Waiting for environment update to complete..."
+          aws elasticbeanstalk wait environment-updated --environment-name "$EB_ENV_NAME"
+          LIVE=$(aws elasticbeanstalk describe-environments --environment-names "$EB_ENV_NAME" \
+            --query 'Environments[0].VersionLabel' --output text)
+          HEALTH=$(aws elasticbeanstalk describe-environments --environment-names "$EB_ENV_NAME" \
+            --query 'Environments[0].Health' --output text)
+          echo "Live version: $LIVE (expected $VERSION) — health: $HEALTH"
+          if [ "$LIVE" != "$VERSION" ]; then
+            echo "::error::Deploy failed: environment is on '$LIVE', not '$VERSION' (rolled back). Recent events:"
+            aws elasticbeanstalk describe-events --environment-name "$EB_ENV_NAME" \
+              --max-items 15 --query 'Events[].{Time:EventDate,Severity:Severity,Message:Message}' --output table
+            exit 1
+          fi
+          if [ "$HEALTH" != "Green" ]; then
+            echo "::error::Deployed '$VERSION' but environment health is '$HEALTH', not Green."
+            exit 1
+          fi
+          echo "Deploy verified: $VERSION is live and healthy."
+
   deploy-client:
     name: Build & deploy client
     runs-on: ubuntu-latest
