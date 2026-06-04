@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ThemeSwitcher } from '@/components/theme-switcher';
-import { Pencil, Trash2, Check, X } from 'lucide-react';
+import { Pencil, Trash2, Check, X, GripVertical } from 'lucide-react';
 
 export default function App() {
   const [todos, setTodos] = useState<TodoItem[]>([]);
@@ -14,6 +14,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [dragEnabled, setDragEnabled] = useState(false);
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [dragOverId, setDragOverId] = useState<number | null>(null);
 
   async function refresh() {
     try {
@@ -74,6 +77,48 @@ export default function App() {
     cancelEdit();
   }
 
+  function handleDragStart(e: React.DragEvent, id: number) {
+    setDraggingId(id);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleDragOver(e: React.DragEvent, id: number) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (id !== dragOverId) setDragOverId(id);
+  }
+
+  function handleDragEnd() {
+    setDragEnabled(false);
+    setDraggingId(null);
+    setDragOverId(null);
+  }
+
+  async function handleDrop(targetId: number) {
+    const sourceId = draggingId;
+    setDraggingId(null);
+    setDragOverId(null);
+    setDragEnabled(false);
+    if (sourceId === null || sourceId === targetId) return;
+
+    const reordered = [...todos];
+    const from = reordered.findIndex((t) => t.id === sourceId);
+    const to = reordered.findIndex((t) => t.id === targetId);
+    if (from === -1 || to === -1) return;
+
+    const [moved] = reordered.splice(from, 1);
+    reordered.splice(to, 0, moved);
+    setTodos(reordered); // optimistic
+
+    try {
+      setTodos(await todosApi.reorder(reordered.map((t) => t.id)));
+      setError(null);
+    } catch (e) {
+      setError((e as Error).message);
+      await refresh(); // revert to server order
+    }
+  }
+
   return (
     <main className="mx-auto max-w-xl px-4 py-12">
       <div className="flex items-start justify-between gap-4">
@@ -107,7 +152,18 @@ export default function App() {
         {todos.map((todo) => (
           <li
             key={todo.id}
-            className="flex items-center justify-between gap-2 rounded-md border bg-card px-3 py-2"
+            draggable={dragEnabled && editingId !== todo.id}
+            onDragStart={(e) => handleDragStart(e, todo.id)}
+            onDragOver={(e) => handleDragOver(e, todo.id)}
+            onDrop={() => handleDrop(todo.id)}
+            onDragEnd={handleDragEnd}
+            className={`flex items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 transition-colors ${
+              draggingId === todo.id ? 'opacity-50' : ''
+            } ${
+              dragOverId === todo.id && draggingId !== todo.id
+                ? 'border-primary'
+                : ''
+            }`}
           >
             {editingId === todo.id ? (
               <>
@@ -142,19 +198,32 @@ export default function App() {
               </>
             ) : (
               <>
-                <label className="flex cursor-pointer items-center gap-3">
-                  <Checkbox
-                    checked={todo.isComplete}
-                    onCheckedChange={() => toggle(todo)}
-                  />
-                  <span
-                    className={
-                      todo.isComplete ? 'text-muted-foreground line-through' : ''
-                    }
+                <div className="flex min-w-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onMouseDown={() => setDragEnabled(true)}
+                    onMouseUp={() => setDragEnabled(false)}
+                    className="shrink-0 cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
+                    aria-label="Drag to reorder"
                   >
-                    {todo.title}
-                  </span>
-                </label>
+                    <GripVertical className="size-4" />
+                  </button>
+                  <label className="flex min-w-0 cursor-pointer items-center gap-3">
+                    <Checkbox
+                      checked={todo.isComplete}
+                      onCheckedChange={() => toggle(todo)}
+                    />
+                    <span
+                      className={
+                        todo.isComplete
+                          ? 'truncate text-muted-foreground line-through'
+                          : 'truncate'
+                      }
+                    >
+                      {todo.title}
+                    </span>
+                  </label>
+                </div>
                 <div className="flex shrink-0">
                   <Button
                     variant="ghost"

@@ -13,9 +13,9 @@ public sealed class TodoRepository : ITodoRepository
     {
         using var conn = _factory.CreateConnection();
         const string sql = """
-            SELECT id, title, is_complete AS IsComplete, created_at AS CreatedAt
+            SELECT id, title, is_complete AS IsComplete, position AS Position, created_at AS CreatedAt
             FROM todos
-            ORDER BY id;
+            ORDER BY position, id;
             """;
         return await conn.QueryAsync<TodoItem>(sql);
     }
@@ -24,7 +24,7 @@ public sealed class TodoRepository : ITodoRepository
     {
         using var conn = _factory.CreateConnection();
         const string sql = """
-            SELECT id, title, is_complete AS IsComplete, created_at AS CreatedAt
+            SELECT id, title, is_complete AS IsComplete, position AS Position, created_at AS CreatedAt
             FROM todos
             WHERE id = @id;
             """;
@@ -35,9 +35,9 @@ public sealed class TodoRepository : ITodoRepository
     {
         using var conn = _factory.CreateConnection();
         const string sql = """
-            INSERT INTO todos (title, is_complete)
-            VALUES (@Title, false)
-            RETURNING id, title, is_complete AS IsComplete, created_at AS CreatedAt;
+            INSERT INTO todos (title, is_complete, position)
+            VALUES (@Title, false, (SELECT COALESCE(MAX(position), 0) + 1 FROM todos))
+            RETURNING id, title, is_complete AS IsComplete, position AS Position, created_at AS CreatedAt;
             """;
         return await conn.QuerySingleAsync<TodoItem>(sql, new { request.Title });
     }
@@ -49,7 +49,7 @@ public sealed class TodoRepository : ITodoRepository
             UPDATE todos
             SET title = @Title, is_complete = @IsComplete
             WHERE id = @id
-            RETURNING id, title, is_complete AS IsComplete, created_at AS CreatedAt;
+            RETURNING id, title, is_complete AS IsComplete, position AS Position, created_at AS CreatedAt;
             """;
         return await conn.QuerySingleOrDefaultAsync<TodoItem>(
             sql, new { id, request.Title, request.IsComplete });
@@ -61,5 +61,20 @@ public sealed class TodoRepository : ITodoRepository
         const string sql = "DELETE FROM todos WHERE id = @id;";
         var rows = await conn.ExecuteAsync(sql, new { id });
         return rows > 0;
+    }
+
+    public async Task ReorderAsync(IReadOnlyList<int> orderedIds)
+    {
+        using var conn = _factory.CreateConnection();
+        conn.Open();
+        using var tx = conn.BeginTransaction();
+
+        const string sql = "UPDATE todos SET position = @Position WHERE id = @Id;";
+        for (var i = 0; i < orderedIds.Count; i++)
+        {
+            await conn.ExecuteAsync(sql, new { Position = i + 1, Id = orderedIds[i] }, tx);
+        }
+
+        tx.Commit();
     }
 }

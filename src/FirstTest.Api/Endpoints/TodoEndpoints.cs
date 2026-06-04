@@ -26,6 +26,15 @@ public static class TodoEndpoints
             return Results.Created($"/api/todos/{created.Id}", created);
         });
 
+        group.MapPut("/reorder", async (ReorderRequest request, ITodoRepository repo) =>
+        {
+            if (request.Ids is null || request.Ids.Count == 0)
+                return Results.BadRequest("At least one id is required.");
+
+            await repo.ReorderAsync(request.Ids);
+            return Results.Ok(await repo.GetAllAsync());
+        });
+
         group.MapPut("/{id:int}", async (int id, UpdateTodoRequest request, ITodoRepository repo) =>
             await repo.UpdateAsync(id, request) is { } updated
                 ? Results.Ok(updated)
