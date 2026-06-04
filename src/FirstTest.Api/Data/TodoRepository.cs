@@ -13,9 +13,9 @@ public sealed class TodoRepository : ITodoRepository
     {
         using var conn = _factory.CreateConnection();
         const string sql = """
-            SELECT id, title, is_complete AS IsComplete, position AS Position, created_at AS CreatedAt
+            SELECT id, title, status AS Status, position AS Position, created_at AS CreatedAt
             FROM todos
-            ORDER BY position, id;
+            ORDER BY status, position, id;
             """;
         return await conn.QueryAsync<TodoItem>(sql);
     }
@@ -24,7 +24,7 @@ public sealed class TodoRepository : ITodoRepository
     {
         using var conn = _factory.CreateConnection();
         const string sql = """
-            SELECT id, title, is_complete AS IsComplete, position AS Position, created_at AS CreatedAt
+            SELECT id, title, status AS Status, position AS Position, created_at AS CreatedAt
             FROM todos
             WHERE id = @id;
             """;
@@ -35,9 +35,10 @@ public sealed class TodoRepository : ITodoRepository
     {
         using var conn = _factory.CreateConnection();
         const string sql = """
-            INSERT INTO todos (title, is_complete, position)
-            VALUES (@Title, false, (SELECT COALESCE(MAX(position), 0) + 1 FROM todos))
-            RETURNING id, title, is_complete AS IsComplete, position AS Position, created_at AS CreatedAt;
+            INSERT INTO todos (title, status, position)
+            VALUES (@Title, 'todo',
+                    (SELECT COALESCE(MAX(position), 0) + 1 FROM todos WHERE status = 'todo'))
+            RETURNING id, title, status AS Status, position AS Position, created_at AS CreatedAt;
             """;
         return await conn.QuerySingleAsync<TodoItem>(sql, new { request.Title });
     }
@@ -47,12 +48,12 @@ public sealed class TodoRepository : ITodoRepository
         using var conn = _factory.CreateConnection();
         const string sql = """
             UPDATE todos
-            SET title = @Title, is_complete = @IsComplete
+            SET title = @Title, status = @Status
             WHERE id = @id
-            RETURNING id, title, is_complete AS IsComplete, position AS Position, created_at AS CreatedAt;
+            RETURNING id, title, status AS Status, position AS Position, created_at AS CreatedAt;
             """;
         return await conn.QuerySingleOrDefaultAsync<TodoItem>(
-            sql, new { id, request.Title, request.IsComplete });
+            sql, new { id, request.Title, request.Status });
     }
 
     public async Task<bool> DeleteAsync(int id)
@@ -63,16 +64,19 @@ public sealed class TodoRepository : ITodoRepository
         return rows > 0;
     }
 
-    public async Task ReorderAsync(IReadOnlyList<int> orderedIds)
+    public async Task ReorderAsync(string status, IReadOnlyList<int> orderedIds)
     {
         using var conn = _factory.CreateConnection();
         conn.Open();
         using var tx = conn.BeginTransaction();
 
-        const string sql = "UPDATE todos SET position = @Position WHERE id = @Id;";
+        // Assign the target status and a sequential position to each id in order.
+        // Moving a card across columns is just a reorder of the destination column.
+        const string sql = "UPDATE todos SET status = @Status, position = @Position WHERE id = @Id;";
         for (var i = 0; i < orderedIds.Count; i++)
         {
-            await conn.ExecuteAsync(sql, new { Position = i + 1, Id = orderedIds[i] }, tx);
+            await conn.ExecuteAsync(
+                sql, new { Status = status, Position = i + 1, Id = orderedIds[i] }, tx);
         }
 
         tx.Commit();

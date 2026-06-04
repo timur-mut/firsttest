@@ -1,7 +1,9 @@
+export type TodoStatus = 'todo' | 'active' | 'done';
+
 export interface TodoItem {
   id: number;
   title: string;
-  isComplete: boolean;
+  status: TodoStatus;
   position: number;
   createdAt: string;
 }
@@ -12,5 +14,5 @@ export interface CreateTodoRequest {
 
 export interface UpdateTodoRequest {
   title: string;
-  isComplete: boolean;
+  status: TodoStatus;
 }

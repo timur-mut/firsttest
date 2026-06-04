@@ -28,17 +28,24 @@ public static class TodoEndpoints
 
         group.MapPut("/reorder", async (ReorderRequest request, ITodoRepository repo) =>
         {
+            if (!TodoStatus.IsValid(request.Status))
+                return Results.BadRequest($"Status must be one of: {string.Join(", ", TodoStatus.All)}.");
             if (request.Ids is null || request.Ids.Count == 0)
                 return Results.BadRequest("At least one id is required.");
 
-            await repo.ReorderAsync(request.Ids);
+            await repo.ReorderAsync(request.Status, request.Ids);
             return Results.Ok(await repo.GetAllAsync());
         });
 
         group.MapPut("/{id:int}", async (int id, UpdateTodoRequest request, ITodoRepository repo) =>
-            await repo.UpdateAsync(id, request) is { } updated
+        {
+            if (!TodoStatus.IsValid(request.Status))
+                return Results.BadRequest($"Status must be one of: {string.Join(", ", TodoStatus.All)}.");
+
+            return await repo.UpdateAsync(id, request) is { } updated
                 ? Results.Ok(updated)
-                : Results.NotFound());
+                : Results.NotFound();
+        });
 
         group.MapDelete("/{id:int}", async (int id, ITodoRepository repo) =>
             await repo.DeleteAsync(id)
