@@ -24,6 +24,9 @@ export default function App() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [draggingId, setDraggingId] = useState<number | null>(null);
+  // Set a tick after dragstart so the card collapses to a single placeholder
+  // (deferred so the browser captures the drag image before it's hidden).
+  const [liftedId, setLiftedId] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   // Refs mirror the drag state so dragend reads current values, not a stale
   // closure. The dragged card is never moved in the DOM during the drag (that
@@ -85,6 +88,11 @@ export default function App() {
     draggingIdRef.current = id;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(id)); // required for Firefox
+    // Collapse the source on the next tick (after the drag image is captured),
+    // guarded so a very fast drag that already ended doesn't re-hide it.
+    setTimeout(() => {
+      if (draggingIdRef.current === id) setLiftedId(id);
+    }, 0);
   }
 
   function setTarget(status: TodoStatus, beforeId: number | null) {
@@ -127,6 +135,7 @@ export default function App() {
     draggingIdRef.current = null;
     dropTargetRef.current = null;
     setDraggingId(null);
+    setLiftedId(null);
     setDropTarget(null);
     if (draggedId === null || !target) return;
 
@@ -226,10 +235,12 @@ export default function App() {
                       onDragOver={(e) => handleCardDragOver(e, todo)}
                       onDrop={(e) => e.preventDefault()}
                       onDragEnd={handleDragEnd}
-                      className={`flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 ${
-                        draggingId === todo.id
-                          ? 'opacity-40'
-                          : 'cursor-grab active:cursor-grabbing'
+                      className={`items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 ${
+                        liftedId === todo.id
+                          ? 'hidden'
+                          : draggingId === todo.id
+                            ? 'flex opacity-40'
+                            : 'flex cursor-grab active:cursor-grabbing'
                       }`}
                     >
                       {editingId === todo.id ? (
