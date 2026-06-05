@@ -39,7 +39,7 @@ describe('detectAreas — sample scene', () => {
     expect(Object.keys(areas)).toHaveLength(2);
   });
 
-  it('detects the expected vertex cycles and areas (12 m² each)', () => {
+  it('detects the expected vertex cycles and inner areas', () => {
     const layer = makeSampleScene().layers['layer-1'];
     const areas = Object.values(detectAreas(layer));
 
@@ -54,8 +54,10 @@ describe('detectAreas — sample scene', () => {
     expect(cyclesAsSets.some((s) => eqSet(s, left))).toBe(true);
     expect(cyclesAsSets.some((s) => eqSet(s, right))).toBe(true);
 
-    // 400 × 300 = 120000 cm² = 12 m².
-    for (const a of areas) expect(a.area).toBeCloseTo(120000, 5);
+    // INNER area, accounting for wall thickness. Outer 400×300; perimeter walls
+    // (thickness 20) inset 20, the shared middle wall insets 10 per side → inner
+    // 370 × 260 = 96200 cm² = 9.62 m² for each room.
+    for (const a of areas) expect(a.area).toBeCloseTo(96200, 5);
   });
 
   it('gives each room a default fill color', () => {
@@ -113,7 +115,7 @@ describe('detectAreas — synthetic graphs', () => {
     const areas = Object.values(detectAreas(layer));
     expect(areas).toHaveLength(1);
     expect(areas[0].vertices).toHaveLength(4);
-    expect(areas[0].area).toBeCloseTo(10000, 5);
+    expect(areas[0].area).toBeCloseTo(3600, 5); // inner: 100×100 outer, thickness 20 → 60×60
   });
 
   it('ignores dangling branches off a closed room', () => {
@@ -135,7 +137,7 @@ describe('detectAreas — synthetic graphs', () => {
     );
     const areas = Object.values(detectAreas(layer));
     expect(areas).toHaveLength(1);
-    expect(areas[0].area).toBeCloseTo(10000, 5);
+    expect(areas[0].area).toBeCloseTo(3600, 5); // inner: 100×100 outer, thickness 20 → 60×60
   });
 
   it('an empty layer yields 0 rooms', () => {

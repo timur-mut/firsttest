@@ -20,8 +20,14 @@
 //      the same cycle (matched by sorted vertex-id set) re-appears.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Area, Layer, Point } from '../contract/types';
-import { polygonArea, shoelaceSignedArea } from '../contract/geometry';
+import type { Area, Layer, Line, Point } from '../contract/types';
+import {
+  insetPolygon,
+  polygonArea,
+  polygonCentroid,
+  polygonPerimeter,
+  shoelaceSignedArea,
+} from '../contract/geometry';
 import { genId } from '../contract/ids';
 
 /** Default room fill color (used when no override exists for the cycle). */
@@ -167,21 +173,13 @@ function cyclePoints(layer: Layer, cycle: string[]): Point[] {
 }
 
 /**
- * Detect rooms (minimal interior faces) in a layer.
- *
- * Returns a map keyed by generated Area id. Each Area carries the ordered vertex
- * cycle, its absolute area in world units², and a fill color (preserving any
- * existing override for the same cycle).
+ * Detect room cycles (minimal interior faces) in a layer, each as an ordered
+ * list of vertex ids. This is the geometric core shared by area detection and
+ * wall geometry.
  */
-export function detectAreas(layer: Layer): Record<string, Area> {
+export function detectRoomCycles(layer: Layer): string[][] {
   const adj = buildAdjacency(layer);
   stripDanglingVertices(adj);
-
-  // Map existing areas by their cycle key so we can preserve color overrides.
-  const existingByKey = new Map<string, Area>();
-  for (const area of Object.values(layer.areas)) {
-    existingByKey.set(cycleKey(area.vertices), area);
-  }
 
   const visitedHalfEdges = new Set<string>();
   const facesByKey = new Map<string, string[]>();
@@ -200,18 +198,15 @@ export function detectAreas(layer: Layer): Record<string, Area> {
       // Mark every directed half-edge consumed by this face as visited so each
       // face is produced exactly once.
       for (let i = 0; i < face.length; i++) {
-        const a = face[i];
-        const b = face[(i + 1) % face.length];
-        visitedHalfEdges.add(edgeKey(a, b));
+        visitedHalfEdges.add(edgeKey(face[i], face[(i + 1) % face.length]));
       }
 
       if (face.length < 3) continue;
 
       const signed = shoelaceSignedArea(cyclePoints(layer, face));
-      // The hardest-right traversal traces interior minimal faces with POSITIVE
-      // signed area and the single unbounded outer face with negative signed
-      // area. Keep only positively-oriented, non-degenerate faces (this drops
-      // the outer face and any collinear/degenerate cycles).
+      // Interior minimal faces have POSITIVE signed area; the single unbounded
+      // outer face is negative. Keep only positively-oriented, non-degenerate
+      // faces (drops the outer face and collinear cycles).
       if (signed <= 1e-6) continue;
 
       const ck = cycleKey(face);
@@ -219,14 +214,130 @@ export function detectAreas(layer: Layer): Record<string, Area> {
     }
   }
 
+  return [...facesByKey.values()];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wall geometry — vertices are the OUTER corners of a room; each wall has
+// thickness that extends INWARD. The inner boundary is the outer polygon inset
+// by each wall's thickness (mitered at corners). A wall shared by two rooms is
+// inset by half its thickness from each side, so it stays centered between them.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A single wall of a room, as a mitered trapezoid quad in world coords. */
+export interface RoomWall {
+  lineId: string;
+  /** [outerA, outerB, innerB, innerA] — clockwise around the wall body. */
+  quad: Point[];
+}
+
+/** Full geometry of one detected room. */
+export interface RoomGeometry {
+  /** Ordered outer-corner vertex ids. */
+  cycle: string[];
+  /** Outer-corner points (the vertices). */
+  outer: Point[];
+  /** Inner boundary points (outer inset by wall thickness). */
+  inner: Point[];
+  /** Inner (floor) area in world units². */
+  area: number;
+  /** Inner perimeter in world units. */
+  perimeter: number;
+  /** One mitered trapezoid per wall on this room's boundary. */
+  walls: RoomWall[];
+  /** Centroid of the inner polygon (label anchor). */
+  centroid: Point;
+}
+
+/** The wall (line) connecting two vertices, regardless of orientation. */
+function lineBetween(layer: Layer, a: string, b: string): Line | undefined {
+  for (const line of Object.values(layer.lines)) {
+    const [x, y] = line.vertices;
+    if ((x === a && y === b) || (x === b && y === a)) return line;
+  }
+  return undefined;
+}
+
+/** Compute outer/inner geometry, area, perimeter and wall quads for each room. */
+export function computeRooms(layer: Layer): RoomGeometry[] {
+  const cycles = detectRoomCycles(layer);
+
+  // How many room cycles each wall borders (shared interior walls -> 2).
+  const lineRoomCount = new Map<string, number>();
+  const cycleLines = cycles.map((cycle) =>
+    cycle.map((id, i) => {
+      const line = lineBetween(layer, id, cycle[(i + 1) % cycle.length]);
+      if (line) lineRoomCount.set(line.id, (lineRoomCount.get(line.id) ?? 0) + 1);
+      return line;
+    }),
+  );
+
+  return cycles.map((cycle, idx) => {
+    const outer = cycle.map((id) => ({ x: layer.vertices[id].x, y: layer.vertices[id].y }));
+    const lines = cycleLines[idx];
+    // Shared walls inset half their thickness (centered); perimeter walls inset
+    // the full thickness (vertex stays the outer corner).
+    const insetDist = lines.map((line) => {
+      if (!line) return 0;
+      const shared = (lineRoomCount.get(line.id) ?? 1) >= 2;
+      return shared ? line.thickness / 2 : line.thickness;
+    });
+    const inner = insetPolygon(outer, insetDist);
+
+    const walls: RoomWall[] = [];
+    for (let i = 0; i < outer.length; i++) {
+      const line = lines[i];
+      if (!line) continue;
+      const j = (i + 1) % outer.length;
+      walls.push({ lineId: line.id, quad: [outer[i], outer[j], inner[j], inner[i]] });
+    }
+
+    return {
+      cycle,
+      outer,
+      inner,
+      area: polygonArea(inner),
+      perimeter: polygonPerimeter(inner),
+      walls,
+      centroid: polygonCentroid(inner),
+    };
+  });
+}
+
+/**
+ * Per-layer cache so the walls / areas / dimensions layers share one room
+ * computation per layer version (immer gives a fresh layer object on edit).
+ */
+const roomCache = new WeakMap<Layer, RoomGeometry[]>();
+export function computeRoomsCached(layer: Layer): RoomGeometry[] {
+  let rooms = roomCache.get(layer);
+  if (!rooms) {
+    rooms = computeRooms(layer);
+    roomCache.set(layer, rooms);
+  }
+  return rooms;
+}
+
+/**
+ * Detect rooms and return them as Area records keyed by id. The reported `area`
+ * is the INNER (floor) area, accounting for wall thickness. Existing color
+ * overrides are preserved when the same cycle re-appears.
+ */
+export function detectAreas(layer: Layer): Record<string, Area> {
+  const existingByKey = new Map<string, Area>();
+  for (const area of Object.values(layer.areas)) {
+    existingByKey.set(cycleKey(area.vertices), area);
+  }
+
   const result: Record<string, Area> = {};
-  for (const [ck, face] of facesByKey) {
+  for (const room of computeRooms(layer)) {
+    const ck = cycleKey(room.cycle);
     const existing = existingByKey.get(ck);
     const id = existing ? existing.id : genId('area');
     result[id] = {
       id,
-      vertices: face,
-      area: polygonArea(cyclePoints(layer, face)),
+      vertices: room.cycle,
+      area: room.area,
       color: existing ? existing.color : DEFAULT_AREA_COLOR,
     };
   }

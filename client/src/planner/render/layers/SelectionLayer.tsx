@@ -5,6 +5,8 @@
 import { usePlannerStore } from '../../store';
 import { getSelectedLayer } from '../../store/helpers';
 import { linePolygon } from '../../contract/geometry';
+import { computeRoomsCached } from '../../utils/areaDetection';
+import type { Point } from '../../contract/types';
 
 // Stroke widths are in world units; divide by scale so they stay ~constant on
 // screen regardless of zoom.
@@ -22,12 +24,39 @@ export function SelectionLayer() {
     .map((id) => layer.items[id])
     .filter((it): it is NonNullable<typeof it> => Boolean(it));
 
+  // Mitered wall quads keyed by line id, so a selected wall highlights its real
+  // rendered shape (outer corner -> inner inset) rather than a centered box.
+  const quadsByLine = new Map<string, Point[][]>();
+  for (const room of computeRoomsCached(layer)) {
+    for (const w of room.walls) {
+      const list = quadsByLine.get(w.lineId) ?? [];
+      list.push(w.quad);
+      quadsByLine.set(w.lineId, list);
+    }
+  }
+
   return (
     <g data-layer="selection" pointerEvents="none">
-      {/* Selected lines (walls): re-stroke their polygon. */}
+      {/* Selected lines (walls): re-stroke their rendered shape. */}
       {selected.lines.map((id) => {
         const line = layer.lines[id];
         if (!line) return null;
+        const quads = quadsByLine.get(id);
+        if (quads && quads.length > 0) {
+          return (
+            <g key={`line-${id}`}>
+              {quads.map((quad, qi) => (
+                <polygon
+                  key={qi}
+                  points={quad.map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill="none"
+                  stroke={HIGHLIGHT}
+                  strokeWidth={sw}
+                />
+              ))}
+            </g>
+          );
+        }
         const a = layer.vertices[line.vertices[0]];
         const b = layer.vertices[line.vertices[1]];
         if (!a || !b) return null;
@@ -35,13 +64,7 @@ export function SelectionLayer() {
           .map((p) => `${p.x},${p.y}`)
           .join(' ');
         return (
-          <polygon
-            key={`line-${id}`}
-            points={points}
-            fill="none"
-            stroke={HIGHLIGHT}
-            strokeWidth={sw}
-          />
+          <polygon key={`line-${id}`} points={points} fill="none" stroke={HIGHLIGHT} strokeWidth={sw} />
         );
       })}
 
