@@ -41,7 +41,8 @@ export function AreasLayer() {
   const layer = usePlannerStore((s) => getSelectedLayer(s.scene));
   const unit = usePlannerStore((s) => s.scene.meta.unit);
 
-  const areas = useMemo(() => detectAreas(layer), [layer.vertices, layer.lines]);
+  // Include layer.areas so name/colour overrides re-render immediately.
+  const areas = useMemo(() => detectAreas(layer), [layer.vertices, layer.lines, layer.areas]);
   const rooms = computeRoomsCached(layer);
   const roomByKey = new Map(rooms.map((r) => [cycleKey(r.cycle), r]));
 
@@ -73,12 +74,25 @@ export function AreasLayer() {
               className="fill-foreground/70"
               pointerEvents="none"
             >
-              <tspan x={room.centroid.x} fontSize={24}>
-                {m2.toFixed(2)} m²
-              </tspan>
-              <tspan x={room.centroid.x} dy={26} fontSize={16} className="fill-foreground/50">
-                {perimM.toFixed(2)} m perimeter
-              </tspan>
+              {area.name ? (
+                <>
+                  <tspan x={room.centroid.x} fontSize={26} fontWeight={600}>
+                    {area.name}
+                  </tspan>
+                  <tspan x={room.centroid.x} dy={24} fontSize={15} className="fill-foreground/50">
+                    {m2.toFixed(2)} m² · {perimM.toFixed(2)} m
+                  </tspan>
+                </>
+              ) : (
+                <>
+                  <tspan x={room.centroid.x} fontSize={24}>
+                    {m2.toFixed(2)} m²
+                  </tspan>
+                  <tspan x={room.centroid.x} dy={26} fontSize={16} className="fill-foreground/50">
+                    {perimM.toFixed(2)} m perimeter
+                  </tspan>
+                </>
+              )}
             </text>
           </g>
         );

@@ -28,7 +28,6 @@ import {
   polygonPerimeter,
   shoelaceSignedArea,
 } from '../contract/geometry';
-import { genId } from '../contract/ids';
 
 /** Default room fill color (used when no override exists for the cycle). */
 export const DEFAULT_AREA_COLOR = '#f5f4f1';
@@ -319,26 +318,33 @@ export function computeRoomsCached(layer: Layer): RoomGeometry[] {
 }
 
 /**
+ * Stable, deterministic id for a room, derived from its vertex set (invariant
+ * under rotation/reflection of the cycle). Because the id depends only on which
+ * vertices bound the room, user metadata (name, color) stored under this id in
+ * `layer.areas` survives every recomputation as long as the room's corners are
+ * unchanged.
+ */
+export function roomId(cycle: string[]): string {
+  return `area-${[...cycle].sort().join('-')}`;
+}
+
+/**
  * Detect rooms and return them as Area records keyed by id. The reported `area`
- * is the INNER (floor) area, accounting for wall thickness. Existing color
- * overrides are preserved when the same cycle re-appears.
+ * is the INNER (floor) area, accounting for wall thickness. Existing `color` and
+ * `name` overrides (stored in `layer.areas` under the same deterministic id) are
+ * preserved.
  */
 export function detectAreas(layer: Layer): Record<string, Area> {
-  const existingByKey = new Map<string, Area>();
-  for (const area of Object.values(layer.areas)) {
-    existingByKey.set(cycleKey(area.vertices), area);
-  }
-
   const result: Record<string, Area> = {};
   for (const room of computeRooms(layer)) {
-    const ck = cycleKey(room.cycle);
-    const existing = existingByKey.get(ck);
-    const id = existing ? existing.id : genId('area');
+    const id = roomId(room.cycle);
+    const existing = layer.areas[id];
     result[id] = {
       id,
       vertices: room.cycle,
       area: room.area,
-      color: existing ? existing.color : DEFAULT_AREA_COLOR,
+      color: existing?.color ?? DEFAULT_AREA_COLOR,
+      ...(existing?.name !== undefined ? { name: existing.name } : {}),
     };
   }
   return result;
