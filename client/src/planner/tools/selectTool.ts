@@ -9,11 +9,15 @@
 //    (one undo step for the whole gesture)
 //  • drag a selected item's ROTATE handle to rotate it about its centre
 //    (Shift snaps to 15°; one undo step for the whole gesture)
+//  • drag a selected item's CORNER handle to RESIZE it (symmetric about the
+//    centre; one undo step for the whole gesture)
+//  • drag a selected DOOR/WINDOW to slide it along its wall
 //  • drag empty canvas to PAN the whole view (a plain click still clears the
 //    selection); view changes are not undoable
 
 import { usePlannerStore } from '../store';
 import { snapToGrid } from '../contract/snapping';
+import { projectPointOnSegment } from '../contract/geometry';
 import { GRID_SIZE } from '../config';
 import type { PlannerPointerEvent, ToolDescriptor } from '../contract/toolTypes';
 
@@ -51,6 +55,18 @@ interface RotationDrag {
   paused: boolean;
 }
 
+/** Transient drag state for resizing a selected item via a corner handle. */
+interface ResizeDrag {
+  itemId: string;
+  paused: boolean;
+}
+
+/** Transient drag state for sliding a selected door/window along its wall. */
+interface HoleDrag {
+  holeId: string;
+  paused: boolean;
+}
+
 /**
  * Drag-to-pan on empty canvas (left button). Screen-space; not undoable. A
  * gesture that never crosses the move threshold is treated as a click and
@@ -68,12 +84,17 @@ let drag: ItemDrag | null = null;
 let lineDrag: LineDrag | null = null;
 let vertexDrag: VertexDrag | null = null;
 let rotationDrag: RotationDrag | null = null;
+let resizeDrag: ResizeDrag | null = null;
+let holeDrag: HoleDrag | null = null;
 let canvasPan: CanvasPan | null = null;
 
 /** Movement (px) before an empty-canvas drag becomes a pan rather than a click. */
 const PAN_THRESHOLD_PX = 3;
 
 const ROTATE_SNAP_DEG = 15;
+
+/** Minimum item width/depth when resizing (world units). */
+const MIN_ITEM_SIZE = 10;
 
 /** Normalize an angle to [0, 360). */
 function norm360(deg: number): number {
@@ -88,12 +109,19 @@ function gridPoint(x: number, y: number, gridOn: boolean): { x: number; y: numbe
 /** Resume history if a gesture had paused it, and clear all drag state. */
 function endGesture() {
   const paused =
-    drag?.paused || lineDrag?.paused || vertexDrag?.paused || rotationDrag?.paused;
+    drag?.paused ||
+    lineDrag?.paused ||
+    vertexDrag?.paused ||
+    rotationDrag?.paused ||
+    resizeDrag?.paused ||
+    holeDrag?.paused;
   if (paused) usePlannerStore.getState().resumeHistory();
   drag = null;
   lineDrag = null;
   vertexDrag = null;
   rotationDrag = null;
+  resizeDrag = null;
+  holeDrag = null;
   canvasPan = null;
 }
 
@@ -118,6 +146,13 @@ export const selectTool: ToolDescriptor = {
         if (e.handle === 'rotate' && e.targetKind === 'items') {
           store.select('items', e.targetId, false);
           rotationDrag = { itemId: e.targetId, paused: false };
+          return;
+        }
+
+        // Grabbing a corner handle resizes the item (keep it selected).
+        if (e.handle === 'resize' && e.targetKind === 'items') {
+          store.select('items', e.targetId, false);
+          resizeDrag = { itemId: e.targetId, paused: false };
           return;
         }
 
@@ -159,6 +194,11 @@ export const selectTool: ToolDescriptor = {
           if (v) {
             vertexDrag = { vertexId: e.targetId, dx: v.x - e.x, dy: v.y - e.y, paused: false };
           }
+        }
+
+        // Prepare to slide a selected door/window along its wall.
+        if (e.targetKind === 'holes') {
+          holeDrag = { holeId: e.targetId, paused: false };
         }
         return;
       }
@@ -214,6 +254,61 @@ export const selectTool: ToolDescriptor = {
               rotationDrag.paused = true;
             }
             store.rotateItem(rotationDrag.itemId, deg);
+          }
+        }
+        return;
+      }
+
+      // Resize an item via a corner handle — symmetric about its centre.
+      if (resizeDrag) {
+        if (e.originalEvent.buttons === 0) {
+          endGesture();
+          return;
+        }
+        const store = usePlannerStore.getState();
+        const item = store.scene.layers[store.scene.selectedLayer].items[resizeDrag.itemId];
+        if (item) {
+          // Cursor in the item's local (un-rotated) frame, relative to centre.
+          const rad = (item.rotation * Math.PI) / 180;
+          const c = Math.cos(rad);
+          const s = Math.sin(rad);
+          const dx = e.x - item.x;
+          const dy = e.y - item.y;
+          const lx = dx * c + dy * s;
+          const ly = -dx * s + dy * c;
+          const width = Math.max(MIN_ITEM_SIZE, Math.abs(lx) * 2);
+          const depth = Math.max(MIN_ITEM_SIZE, Math.abs(ly) * 2);
+          if (width !== item.width || depth !== item.depth) {
+            if (!resizeDrag.paused) {
+              store.pauseHistory();
+              resizeDrag.paused = true;
+            }
+            store.updateItem(resizeDrag.itemId, { width, depth });
+          }
+        }
+        return;
+      }
+
+      // Slide a door/window along its wall.
+      if (holeDrag) {
+        if (e.originalEvent.buttons === 0) {
+          endGesture();
+          return;
+        }
+        const store = usePlannerStore.getState();
+        const layer = store.scene.layers[store.scene.selectedLayer];
+        const hole = layer.holes[holeDrag.holeId];
+        const line = hole ? layer.lines[hole.lineId] : undefined;
+        if (hole && line) {
+          const a = layer.vertices[line.vertices[0]];
+          const b = layer.vertices[line.vertices[1]];
+          if (a && b) {
+            const { t } = projectPointOnSegment({ x: e.x, y: e.y }, a, b);
+            if (!holeDrag.paused) {
+              store.pauseHistory();
+              holeDrag.paused = true;
+            }
+            store.moveHole(holeDrag.holeId, t);
           }
         }
         return;
@@ -281,7 +376,7 @@ export const selectTool: ToolDescriptor = {
         canvasPan = null;
         return;
       }
-      if (!drag && !lineDrag && !vertexDrag && !rotationDrag) return;
+      if (!drag && !lineDrag && !vertexDrag && !rotationDrag && !resizeDrag && !holeDrag) return;
       endGesture();
     },
 
