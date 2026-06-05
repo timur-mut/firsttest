@@ -130,23 +130,38 @@ export function SelectionLayer() {
             />
             {single && (
               <>
-                {/* Corner drag handles. */}
+                {/* Corner resize handles: invisible larger grab target (tagged
+                    so the select tool starts a resize) + the visible knob. */}
                 {[
                   [-halfW, -halfD],
                   [halfW, -halfD],
                   [halfW, halfD],
                   [-halfW, halfD],
                 ].map(([hx, hy], i) => (
-                  <rect
-                    key={i}
-                    x={hx - handle}
-                    y={hy - handle}
-                    width={handle * 2}
-                    height={handle * 2}
-                    fill="#fff"
-                    stroke={HIGHLIGHT}
-                    strokeWidth={sw}
-                  />
+                  <g key={i}>
+                    <rect
+                      x={hx - handle * 1.6}
+                      y={hy - handle * 1.6}
+                      width={handle * 3.2}
+                      height={handle * 3.2}
+                      fill="transparent"
+                      pointerEvents="auto"
+                      data-el-id={item.id}
+                      data-el-kind="items"
+                      data-handle="resize"
+                      style={{ cursor: i % 2 === 0 ? 'nwse-resize' : 'nesw-resize' }}
+                    />
+                    <rect
+                      x={hx - handle}
+                      y={hy - handle}
+                      width={handle * 2}
+                      height={handle * 2}
+                      fill="#fff"
+                      stroke={HIGHLIGHT}
+                      strokeWidth={sw}
+                      pointerEvents="none"
+                    />
+                  </g>
                 ))}
                 {/* Rotate handle: stem above the top edge + knob. */}
                 <line
