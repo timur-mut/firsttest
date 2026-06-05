@@ -7,6 +7,8 @@
 //    walls follow (one undo step for the whole gesture)
 //  • drag a CORNER (vertex) to move it — every wall attached to it follows
 //    (one undo step for the whole gesture)
+//  • drag a selected item's ROTATE handle to rotate it about its centre
+//    (Shift snaps to 15°; one undo step for the whole gesture)
 
 import { usePlannerStore } from '../store';
 import { snapToGrid } from '../contract/snapping';
@@ -41,9 +43,23 @@ interface VertexDrag {
   paused: boolean;
 }
 
+/** Transient drag state for rotating a selected item via its rotate handle. */
+interface RotationDrag {
+  itemId: string;
+  paused: boolean;
+}
+
 let drag: ItemDrag | null = null;
 let lineDrag: LineDrag | null = null;
 let vertexDrag: VertexDrag | null = null;
+let rotationDrag: RotationDrag | null = null;
+
+const ROTATE_SNAP_DEG = 15;
+
+/** Normalize an angle to [0, 360). */
+function norm360(deg: number): number {
+  return ((deg % 360) + 360) % 360;
+}
 
 /** Snap a world coordinate to the grid when grid snapping is enabled. */
 function gridPoint(x: number, y: number, gridOn: boolean): { x: number; y: number } {
@@ -52,11 +68,13 @@ function gridPoint(x: number, y: number, gridOn: boolean): { x: number; y: numbe
 
 /** Resume history if a gesture had paused it, and clear all drag state. */
 function endGesture() {
-  const paused = drag?.paused || lineDrag?.paused || vertexDrag?.paused;
+  const paused =
+    drag?.paused || lineDrag?.paused || vertexDrag?.paused || rotationDrag?.paused;
   if (paused) usePlannerStore.getState().resumeHistory();
   drag = null;
   lineDrag = null;
   vertexDrag = null;
+  rotationDrag = null;
 }
 
 export const selectTool: ToolDescriptor = {
@@ -74,6 +92,15 @@ export const selectTool: ToolDescriptor = {
       const store = usePlannerStore.getState();
 
       if (e.targetId && e.targetKind) {
+        // Grabbing the rotate handle starts a rotation gesture (not a move).
+        // Keep the item selected and ignore Shift here, so Shift-to-snap during
+        // rotation doesn't toggle the selection off.
+        if (e.handle === 'rotate' && e.targetKind === 'items') {
+          store.select('items', e.targetId, false);
+          rotationDrag = { itemId: e.targetId, paused: false };
+          return;
+        }
+
         store.select(e.targetKind, e.targetId, e.shiftKey);
 
         // Prepare to drag a single selected item. We compute the grab offset so
@@ -121,6 +148,30 @@ export const selectTool: ToolDescriptor = {
     },
 
     onPointerMove(e: PlannerPointerEvent) {
+      // Rotation takes precedence if a rotate gesture is active.
+      if (rotationDrag) {
+        if (e.originalEvent.buttons === 0) {
+          endGesture();
+          return;
+        }
+        const store = usePlannerStore.getState();
+        const item = store.scene.layers[store.scene.selectedLayer].items[rotationDrag.itemId];
+        if (item) {
+          // The handle sits "up" (−Y) from the centre at rotation 0, so the
+          // rotation is the cursor's angle about the centre plus 90°.
+          let deg = norm360((Math.atan2(e.y - item.y, e.x - item.x) * 180) / Math.PI + 90);
+          if (e.shiftKey) deg = norm360(Math.round(deg / ROTATE_SNAP_DEG) * ROTATE_SNAP_DEG);
+          if (deg !== item.rotation) {
+            if (!rotationDrag.paused) {
+              store.pauseHistory();
+              rotationDrag.paused = true;
+            }
+            store.rotateItem(rotationDrag.itemId, deg);
+          }
+        }
+        return;
+      }
+
       // Corner drag takes precedence if a vertex drag is active.
       if (vertexDrag) {
         if (e.originalEvent.buttons === 0) {
@@ -177,7 +228,7 @@ export const selectTool: ToolDescriptor = {
     },
 
     onPointerUp() {
-      if (!drag && !lineDrag && !vertexDrag) return;
+      if (!drag && !lineDrag && !vertexDrag && !rotationDrag) return;
       endGesture();
     },
 

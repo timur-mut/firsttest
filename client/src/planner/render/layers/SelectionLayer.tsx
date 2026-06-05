@@ -133,6 +133,21 @@ export function SelectionLayer() {
                   y2={-halfD - handle * 4}
                   stroke={HIGHLIGHT}
                   strokeWidth={sw}
+                  pointerEvents="none"
+                />
+                {/* Invisible, larger grab target — re-enables pointer events
+                    (the layer group has pointer-events: none) and is tagged so
+                    the select tool starts a rotation gesture. */}
+                <circle
+                  cx={0}
+                  cy={-halfD - handle * 4}
+                  r={handle * 2}
+                  fill="transparent"
+                  pointerEvents="auto"
+                  data-el-id={item.id}
+                  data-el-kind="items"
+                  data-handle="rotate"
+                  style={{ cursor: 'grab' }}
                 />
                 <circle
                   cx={0}
@@ -141,6 +156,7 @@ export function SelectionLayer() {
                   fill="#fff"
                   stroke={HIGHLIGHT}
                   strokeWidth={sw}
+                  pointerEvents="none"
                 />
               </>
             )}

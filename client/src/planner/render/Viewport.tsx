@@ -126,6 +126,7 @@ export function Viewport() {
       ctrlKey: e.ctrlKey || e.metaKey,
       targetId: targetEl?.dataset.elId,
       targetKind: targetEl?.dataset.elKind as PrototypeKind | undefined,
+      handle: targetEl?.dataset.handle,
       originalEvent: e,
     };
   }
