@@ -62,7 +62,9 @@ export function PropertiesPanel() {
   const hole = selected.holes.length ? layer.holes[selected.holes[0]] : undefined;
   const line = selected.lines.length ? layer.lines[selected.lines[0]] : undefined;
   const area = selected.areas.length ? layer.areas[selected.areas[0]] : undefined;
+  const vertex = selected.vertices.length ? layer.vertices[selected.vertices[0]] : undefined;
 
+  const hasDeletable = Boolean(item || hole || line || area);
   const deleteSelected = () => store.getState().deleteSelected();
 
   return (
@@ -193,16 +195,38 @@ export function PropertiesPanel() {
             </section>
           )}
 
-          <div className="mt-auto pt-2">
-            <Button
-              variant="destructive"
-              size="sm"
-              className="w-full"
-              onClick={deleteSelected}
-            >
-              Delete
-            </Button>
-          </div>
+          {vertex && (
+            <section className="flex flex-col gap-2" data-section="vertex">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Corner
+              </h3>
+              <Field label="X">
+                <NumberInput
+                  value={vertex.x}
+                  onCommit={(n) => store.getState().moveVertex(vertex.id, n, vertex.y)}
+                />
+              </Field>
+              <Field label="Y">
+                <NumberInput
+                  value={vertex.y}
+                  onCommit={(n) => store.getState().moveVertex(vertex.id, vertex.x, n)}
+                />
+              </Field>
+            </section>
+          )}
+
+          {hasDeletable && (
+            <div className="mt-auto pt-2">
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full"
+                onClick={deleteSelected}
+              >
+                Delete
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -36,6 +36,11 @@ export interface WallSlice {
   cancelWall(): void;
   /** Move a vertex (and implicitly every wall attached to it). */
   moveVertex(vertexId: string, x: number, y: number): void;
+  /**
+   * Translate a whole wall by a world-space delta, moving BOTH of its
+   * endpoints. Shared corners move too, so adjacent walls follow.
+   */
+  moveLine(lineId: string, dx: number, dy: number): void;
   /** Delete a wall (and orphaned vertices / holes). */
   removeLine(lineId: string): void;
 }
@@ -154,6 +159,26 @@ export const createWallSlice: SliceCreator<WallSlice> = (mutate) => ({
       if (!vertex) return;
       vertex.x = x;
       vertex.y = y;
+      applyDerived(layer);
+    }),
+
+  moveLine: (lineId, dx, dy) =>
+    mutate((d) => {
+      if (dx === 0 && dy === 0) return;
+      const layer = getSelectedLayer(d.scene);
+      const line = layer.lines[lineId];
+      if (!line) return;
+      // Translate each distinct endpoint. A wall's two endpoints are always
+      // distinct, but guard against duplicates defensively.
+      const seen = new Set<string>();
+      for (const vId of line.vertices) {
+        if (seen.has(vId)) continue;
+        seen.add(vId);
+        const v = layer.vertices[vId];
+        if (!v) continue;
+        v.x += dx;
+        v.y += dy;
+      }
       applyDerived(layer);
     }),
 

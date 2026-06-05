@@ -25,6 +25,12 @@ export interface PlannerPointerEvent {
   targetId?: string;
   /** Kind of the element under the pointer, if any. */
   targetKind?: PrototypeKind;
+  /**
+   * Name of the manipulation handle under the pointer, if any (e.g. 'rotate').
+   * Set from a `data-handle` attribute on the element; lets a tool distinguish
+   * grabbing a handle from grabbing the element body.
+   */
+  handle?: string;
   /** Underlying React event, for stopPropagation / button checks. */
   originalEvent: ReactPointerEvent;
 }
