@@ -69,9 +69,11 @@ describe('render mount', () => {
     const { container } = render(<PlannerApp />);
     const svg = container.querySelector('svg');
     expect(svg).toBeInTheDocument();
-    // Sample scene has 7 walls; the foundation walls layer renders each.
+    // Sample scene has 7 walls; each renders a tagged polygon (the shared middle
+    // wall appears once per room, so ≥ 7 polygons covering 7 distinct lines).
     const walls = container.querySelectorAll('[data-el-kind="lines"]');
-    expect(walls.length).toBe(7);
+    const wallIds = new Set(Array.from(walls).map((w) => w.getAttribute('data-el-id')));
+    expect(wallIds.size).toBe(7);
     // And one furniture item.
     const items = container.querySelectorAll('[data-el-kind="items"]');
     expect(items.length).toBe(1);

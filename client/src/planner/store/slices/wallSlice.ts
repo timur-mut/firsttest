@@ -3,7 +3,7 @@
 
 import type { Layer, Line, Point, Vertex } from '../../contract/types';
 import { genId } from '../../contract/ids';
-import { almostEqual } from '../../contract/geometry';
+import { almostEqual, projectPointOnSegment } from '../../contract/geometry';
 import type { SliceCreator } from '../storeTypes';
 import { applyDerived, getSelectedLayer } from '../helpers';
 
@@ -43,6 +43,13 @@ export interface WallSlice {
   moveLine(lineId: string, dx: number, dy: number): void;
   /** Set a wall's thickness (clamped to a sensible minimum). */
   setLineThickness(lineId: string, thickness: number): void;
+  /**
+   * Break a wall by inserting a new vertex (corner) at the point on the wall
+   * nearest to (x, y). The wall is replaced by two walls that share the new
+   * vertex; thickness/height are preserved and any holes are redistributed.
+   * Returns the new vertex id, or null if the split would be degenerate.
+   */
+  splitLine(lineId: string, x: number, y: number): string | null;
   /** Delete a wall (and orphaned vertices / holes). */
   removeLine(lineId: string): void;
 }
@@ -97,6 +104,24 @@ function createLine(layer: Layer, aId: string, bId: string): string {
   if (!layer.vertices[bId].lines.includes(id)) layer.vertices[bId].lines.push(id);
   return id;
 }
+
+/** Create a wall between two vertices, copying thickness/height from `src`. */
+function createLineLike(layer: Layer, aId: string, bId: string, src: Line): string {
+  const id = genId('line');
+  layer.lines[id] = {
+    id,
+    type: 'wall',
+    vertices: [aId, bId],
+    thickness: src.thickness,
+    height: src.height,
+    holes: [],
+  };
+  if (!layer.vertices[aId].lines.includes(id)) layer.vertices[aId].lines.push(id);
+  if (!layer.vertices[bId].lines.includes(id)) layer.vertices[bId].lines.push(id);
+  return id;
+}
+
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
 export const createWallSlice: SliceCreator<WallSlice> = (mutate) => ({
   wallDraft: null,
@@ -190,6 +215,53 @@ export const createWallSlice: SliceCreator<WallSlice> = (mutate) => ({
       if (!line) return;
       line.thickness = Math.max(1, thickness);
     }),
+
+  splitLine: (lineId, x, y) => {
+    let newVertexId: string | null = null;
+    mutate((d) => {
+      const layer = getSelectedLayer(d.scene);
+      const line = layer.lines[lineId];
+      if (!line) return;
+      const [aId, bId] = line.vertices;
+      const a = layer.vertices[aId];
+      const b = layer.vertices[bId];
+      if (!a || !b) return;
+
+      // Closest point on the wall, as a fraction t along a -> b.
+      const { point, t } = projectPointOnSegment({ x, y }, a, b);
+      // Refuse a degenerate split at (or extremely near) an endpoint.
+      if (t <= 1e-4 || t >= 1 - 1e-4) return;
+
+      // New corner sits on the wall; the two halves inherit thickness/height.
+      const vId = createVertex(layer, point.x, point.y);
+      const l1 = createLineLike(layer, aId, vId, line); // a -> v  (covers [0, t])
+      const l2 = createLineLike(layer, vId, bId, line); // v -> b  (covers [t, 1])
+
+      // Redistribute holes onto the half they fall in, rescaling the offset.
+      for (const holeId of line.holes) {
+        const hole = layer.holes[holeId];
+        if (!hole) continue;
+        if (hole.offset < t) {
+          hole.lineId = l1;
+          hole.offset = clamp01(hole.offset / t);
+          layer.lines[l1].holes.push(holeId);
+        } else {
+          hole.lineId = l2;
+          hole.offset = clamp01((hole.offset - t) / (1 - t));
+          layer.lines[l2].holes.push(holeId);
+        }
+      }
+
+      // Detach + delete the original wall.
+      a.lines = a.lines.filter((id) => id !== lineId);
+      b.lines = b.lines.filter((id) => id !== lineId);
+      delete layer.lines[lineId];
+
+      applyDerived(layer);
+      newVertexId = vId;
+    });
+    return newVertexId;
+  },
 
   removeLine: (lineId) =>
     mutate((d) => {

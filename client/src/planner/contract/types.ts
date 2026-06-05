@@ -90,6 +90,8 @@ export interface Area {
   area: number;
   /** Fill color for rendering. */
   color: string;
+  /** Optional user-given room label (e.g. "Bedroom"). */
+  name?: string;
 }
 
 /** A single design layer. MVP ships exactly one; the map is forward-compat. */
@@ -134,6 +136,7 @@ export type Mode =
   | 'idle'
   | 'drawing-wall'
   | 'drawing-hole'
+  | 'splitting-wall'
   | 'placing-item'
   | 'dragging-vertex'
   | 'dragging-item'

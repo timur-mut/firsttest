@@ -27,11 +27,15 @@ describe('AreasLayer', () => {
     expect(polygons.length).toBe(2);
   });
 
-  it('labels each room in m² (12.00 m²)', () => {
+  it('labels each room with inner area (m²) and perimeter (m)', () => {
     const { container } = renderSvg();
     const labels = Array.from(container.querySelectorAll('text')).map((t) => t.textContent);
     expect(labels).toHaveLength(2);
-    for (const label of labels) expect(label).toBe('12.00 m²');
+    // Inner area = 9.62 m², inner perimeter = 12.60 m (see areaDetection tests).
+    for (const label of labels) {
+      expect(label).toContain('9.62 m²');
+      expect(label).toContain('12.60 m perimeter');
+    }
   });
 
   it('tags polygons with data-el-id / data-el-kind for selection', () => {

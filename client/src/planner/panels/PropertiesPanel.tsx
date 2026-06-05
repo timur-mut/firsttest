@@ -4,11 +4,13 @@
 // goes through the owning slices' actions (updateItem/rotateItem, updateHole,
 // setAreaColor). Walls have no prop setter, so they show read-only info.
 
+import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { usePlannerStore } from '../store';
 import { getSelectedLayer } from '../store/helpers';
 import { verticesDistance } from '../contract/geometry';
+import { detectAreas } from '../utils/areaDetection';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -45,6 +47,29 @@ function NumberInput({
   );
 }
 
+/** Text input that commits on blur / Enter (one undo step, not per keystroke). */
+function TextCommitInput({
+  value,
+  placeholder,
+  onCommit,
+}: {
+  value: string;
+  placeholder?: string;
+  onCommit: (s: string) => void;
+}) {
+  return (
+    <Input
+      className="h-8"
+      defaultValue={value}
+      placeholder={placeholder}
+      onBlur={(e) => onCommit(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+    />
+  );
+}
+
 export function PropertiesPanel() {
   const selected = usePlannerStore((s) => s.selected);
   const layer = usePlannerStore((s) => getSelectedLayer(s.scene));
@@ -61,7 +86,13 @@ export function PropertiesPanel() {
   const item = selected.items.length ? layer.items[selected.items[0]] : undefined;
   const hole = selected.holes.length ? layer.holes[selected.holes[0]] : undefined;
   const line = selected.lines.length ? layer.lines[selected.lines[0]] : undefined;
-  const area = selected.areas.length ? layer.areas[selected.areas[0]] : undefined;
+  // Rooms are derived; resolve the selected one from detection (the store's
+  // layer.areas only holds name/colour overrides), recomputing on edits.
+  const detectedAreas = useMemo(
+    () => detectAreas(layer),
+    [layer.vertices, layer.lines, layer.areas],
+  );
+  const area = selected.areas.length ? detectedAreas[selected.areas[0]] : undefined;
   const vertex = selected.vertices.length ? layer.vertices[selected.vertices[0]] : undefined;
 
   const hasDeletable = Boolean(item || hole || line || area);
@@ -212,6 +243,14 @@ export function PropertiesPanel() {
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Room
               </h3>
+              <Field label="Name">
+                <TextCommitInput
+                  key={area.id}
+                  value={area.name ?? ''}
+                  placeholder="Room"
+                  onCommit={(name) => store.getState().setAreaName(area.id, name)}
+                />
+              </Field>
               <Field label="Color">
                 <Input
                   type="color"

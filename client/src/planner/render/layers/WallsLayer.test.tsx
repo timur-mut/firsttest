@@ -17,12 +17,15 @@ beforeEach(() => {
 });
 
 describe('WallsLayer', () => {
-  it('renders one polygon per wall, tagged for selection', () => {
+  it('renders a tagged polygon for every wall (shared walls once per room)', () => {
     const { container } = renderSvg(<WallsLayer />);
     const walls = container.querySelectorAll('polygon[data-el-kind="lines"]');
-    // Sample scene has 7 walls.
-    expect(walls.length).toBe(7);
     walls.forEach((w) => expect(w.getAttribute('data-el-id')).toBeTruthy());
+    // All 7 walls are represented; the shared middle wall (l-mid) renders one
+    // mitered quad per room, so 8 polygons cover 7 distinct lines.
+    const lineIds = new Set(Array.from(walls).map((w) => w.getAttribute('data-el-id')));
+    expect(lineIds.size).toBe(7);
+    expect(walls.length).toBe(8);
   });
 });
 

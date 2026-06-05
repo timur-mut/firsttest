@@ -1,51 +1,62 @@
-// Areas (rooms) layer — owned by Unit 4. Renders filled room polygons + area
-// labels (m²). Sits at the back (z-order).
+// Areas (rooms) layer — owned by Unit 4. Renders the INNER (floor) polygon of
+// each room — i.e. the outer corners inset by the wall thickness — plus a label
+// with the inner area (m²) and perimeter (m). Sits at the back (z-order).
 //
-// To stay independent of the store's derived areas (and avoid polluting undo
-// history), rooms are COMPUTED for rendering via detectAreas() inside a useMemo
-// keyed on the layer's vertices + lines. The layer never mutates the store.
+// Geometry comes from computeRoomsCached (shared with the walls layer);
+// id/color come from detectAreas (memoized) so colour overrides are preserved.
 
 import { useMemo } from 'react';
 import { usePlannerStore } from '../../store';
 import { getSelectedLayer } from '../../store/helpers';
-import { detectAreas } from '../../utils/areaDetection';
-import { polygonCentroid } from '../../contract/geometry';
-import type { Point, Unit } from '../../contract/types';
+import { computeRoomsCached, detectAreas } from '../../utils/areaDetection';
+import type { Unit } from '../../contract/types';
 
 /** World-unit² -> m² conversion factor for a given scene unit. */
 function unitToMetersSquared(unit: Unit): number {
   switch (unit) {
     case 'cm':
-      return 1 / 10000; // 100 cm per m -> 10000 cm² per m²
+      return 1 / 10000;
     case 'mm':
-      return 1 / 1_000_000; // 1000 mm per m -> 1e6 mm² per m²
+      return 1 / 1_000_000;
     case 'in':
-      return 0.00064516; // 1 in² = 0.00064516 m²
+      return 0.00064516;
   }
 }
+
+/** World-unit -> m linear conversion factor for a given scene unit. */
+function unitToMeters(unit: Unit): number {
+  switch (unit) {
+    case 'cm':
+      return 1 / 100;
+    case 'mm':
+      return 1 / 1000;
+    case 'in':
+      return 0.0254;
+  }
+}
+
+const cycleKey = (ids: string[]) => [...ids].sort().join('|');
 
 export function AreasLayer() {
   const layer = usePlannerStore((s) => getSelectedLayer(s.scene));
   const unit = usePlannerStore((s) => s.scene.meta.unit);
 
-  const areas = useMemo(
-    () => detectAreas(layer),
-    // Recompute only when the wall graph changes.
-    [layer.vertices, layer.lines],
-  );
+  // Include layer.areas so name/colour overrides re-render immediately.
+  const areas = useMemo(() => detectAreas(layer), [layer.vertices, layer.lines, layer.areas]);
+  const rooms = computeRoomsCached(layer);
+  const roomByKey = new Map(rooms.map((r) => [cycleKey(r.cycle), r]));
 
   const toM2 = unitToMetersSquared(unit);
+  const toM = unitToMeters(unit);
 
   return (
     <g data-layer="areas">
       {Object.values(areas).map((area) => {
-        const points: Point[] = area.vertices.map((id) => {
-          const v = layer.vertices[id];
-          return { x: v.x, y: v.y };
-        });
-        const pointsAttr = points.map((p) => `${p.x},${p.y}`).join(' ');
-        const centroid = polygonCentroid(points);
+        const room = roomByKey.get(cycleKey(area.vertices));
+        if (!room || room.inner.length < 3) return null;
+        const pointsAttr = room.inner.map((p) => `${p.x},${p.y}`).join(' ');
         const m2 = area.area * toM2;
+        const perimM = room.perimeter * toM;
         return (
           <g key={area.id} data-el-id={area.id} data-el-kind="areas">
             <polygon
@@ -56,15 +67,32 @@ export function AreasLayer() {
               data-el-kind="areas"
             />
             <text
-              x={centroid.x}
-              y={centroid.y}
+              x={room.centroid.x}
+              y={room.centroid.y}
               textAnchor="middle"
               dominantBaseline="middle"
               className="fill-foreground/70"
-              fontSize={24}
               pointerEvents="none"
             >
-              {m2.toFixed(2)} m²
+              {area.name ? (
+                <>
+                  <tspan x={room.centroid.x} fontSize={26} fontWeight={600}>
+                    {area.name}
+                  </tspan>
+                  <tspan x={room.centroid.x} dy={24} fontSize={15} className="fill-foreground/50">
+                    {m2.toFixed(2)} m² · {perimM.toFixed(2)} m
+                  </tspan>
+                </>
+              ) : (
+                <>
+                  <tspan x={room.centroid.x} fontSize={24}>
+                    {m2.toFixed(2)} m²
+                  </tspan>
+                  <tspan x={room.centroid.x} dy={26} fontSize={16} className="fill-foreground/50">
+                    {perimM.toFixed(2)} m perimeter
+                  </tspan>
+                </>
+              )}
             </text>
           </g>
         );

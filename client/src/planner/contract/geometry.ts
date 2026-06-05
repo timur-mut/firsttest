@@ -142,3 +142,64 @@ export function pointInPolygon(p: Point, polygon: Point[]): boolean {
 export function almostEqual(a: number, b: number, eps = EPSILON): boolean {
   return Math.abs(a - b) < eps;
 }
+
+/** Total edge length around a (closed) polygon. */
+export function polygonPerimeter(points: Point[]): number {
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    sum += pointsDistance(points[i], points[(i + 1) % points.length]);
+  }
+  return sum;
+}
+
+/**
+ * Intersection of two infinite lines, each given as a point + direction vector.
+ * Returns null when the lines are parallel (within EPSILON).
+ */
+export function lineIntersection(p1: Point, d1: Point, p2: Point, d2: Point): Point | null {
+  const denom = d1.x * d2.y - d1.y * d2.x;
+  if (Math.abs(denom) < EPSILON) return null;
+  const t = ((p2.x - p1.x) * d2.y - (p2.y - p1.y) * d2.x) / denom;
+  return { x: p1.x + d1.x * t, y: p1.y + d1.y * t };
+}
+
+/** Offset each polygon edge sideways and re-intersect adjacent edges (miter). */
+function offsetCorners(outer: Point[], dist: number[], sign: number): Point[] {
+  const n = outer.length;
+  const lines = outer.map((p, i) => {
+    const q = outer[(i + 1) % n];
+    let ux = q.x - p.x;
+    let uy = q.y - p.y;
+    const len = Math.hypot(ux, uy) || 1;
+    ux /= len;
+    uy /= len;
+    // Perpendicular, flipped by `sign` to choose the offset side.
+    const nx = -uy * sign;
+    const ny = ux * sign;
+    const o = dist[i];
+    return { p: { x: p.x + nx * o, y: p.y + ny * o }, d: { x: ux, y: uy } };
+  });
+  const inner: Point[] = [];
+  for (let i = 0; i < n; i++) {
+    const prev = lines[(i - 1 + n) % n];
+    const cur = lines[i];
+    // Corner = where the two offset edges meet (mitered); straight runs fall
+    // back to the offset start point.
+    inner.push(lineIntersection(prev.p, prev.d, cur.p, cur.d) ?? cur.p);
+  }
+  return inner;
+}
+
+/**
+ * Inset a simple polygon inward, offsetting each edge by its own distance and
+ * mitering the corners. `dist[i]` is the inward offset of edge i (outer[i] ->
+ * outer[i+1]). The inward side is chosen automatically (the offset that shrinks
+ * the polygon). Edge count is preserved (one inner point per outer point).
+ */
+export function insetPolygon(outer: Point[], dist: number[]): Point[] {
+  if (outer.length < 3) return outer.map((p) => ({ ...p }));
+  const a = offsetCorners(outer, dist, 1);
+  const b = offsetCorners(outer, dist, -1);
+  // The inward offset is the one that yields the smaller area.
+  return polygonArea(a) <= polygonArea(b) ? a : b;
+}
