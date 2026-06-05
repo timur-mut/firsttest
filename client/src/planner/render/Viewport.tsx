@@ -12,12 +12,20 @@
 // render scene data. Unit 1 enhances behavior via the viewport SLICE, not here.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type PointerEvent as ReactPointerEvent,
+  type WheelEvent,
+} from 'react';
 import { usePlannerStore } from '../store';
 import { getSelectedLayer } from '../store/helpers';
 import { snapPoint } from '../contract/snapping';
 import type { PrototypeKind } from '../contract/types';
 import type { PlannerPointerEvent } from '../contract/toolTypes';
+import { ITEM_DRAG_MIME, type ItemDragPayload } from '../contract/catalogTypes';
 import { toolForMode } from '../tools/registry';
 import { GRID_SIZE, SNAP_RADIUS_PX } from '../config';
 import { SceneRenderer } from './SceneRenderer';
@@ -50,9 +58,42 @@ export function Viewport() {
     return () => ro.disconnect();
   }, []);
 
-  function clientToScreen(e: ReactPointerEvent | WheelEvent): { sx: number; sy: number } {
+  function clientToScreen(e: { clientX: number; clientY: number }): { sx: number; sy: number } {
     const rect = svgRef.current?.getBoundingClientRect();
     return { sx: e.clientX - (rect?.left ?? 0), sy: e.clientY - (rect?.top ?? 0) };
+  }
+
+  function screenToWorld(sx: number, sy: number): { x: number; y: number } {
+    const state = usePlannerStore.getState();
+    const s = state.scene.meta.pixelsPerUnit * state.zoom;
+    return { x: (sx - state.pan.x) / s, y: (sy - state.pan.y) / s };
+  }
+
+  // Catalog -> canvas drag-drop. The catalog (Unit 5) sets an ItemDragPayload;
+  // we convert to world coordinates and call addItem (Unit 5/6 implements it).
+  function onDragOver(e: ReactDragEvent) {
+    if (e.dataTransfer.types.includes(ITEM_DRAG_MIME)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  }
+
+  function onDrop(e: ReactDragEvent) {
+    const raw = e.dataTransfer.getData(ITEM_DRAG_MIME);
+    if (!raw) return;
+    e.preventDefault();
+    try {
+      const payload = JSON.parse(raw) as ItemDragPayload;
+      const { sx, sy } = clientToScreen(e);
+      const { x, y } = screenToWorld(sx, sy);
+      usePlannerStore.getState().addItem(
+        { type: payload.type, width: payload.defaultWidth, depth: payload.defaultDepth, color: payload.color },
+        x,
+        y,
+      );
+    } catch {
+      // ignore malformed payloads
+    }
   }
 
   function buildPointerEvent(e: ReactPointerEvent): PlannerPointerEvent {
@@ -140,6 +181,8 @@ export function Viewport() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onWheel={onWheel}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
       >
         <defs>
           {tile > 4 && (
