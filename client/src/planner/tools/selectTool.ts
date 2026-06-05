@@ -5,6 +5,8 @@
 //  • drag a selected ITEM to move it (one undo step for the whole gesture)
 //  • drag a selected WALL to translate it — both endpoints move, so adjacent
 //    walls follow (one undo step for the whole gesture)
+//  • drag a CORNER (vertex) to move it — every wall attached to it follows
+//    (one undo step for the whole gesture)
 
 import { usePlannerStore } from '../store';
 import { snapToGrid } from '../contract/snapping';
@@ -30,8 +32,18 @@ interface LineDrag {
   paused: boolean;
 }
 
+/** Transient drag state for moving a selected corner (vertex). */
+interface VertexDrag {
+  vertexId: string;
+  /** Offset from the vertex to the grab point, in world units. */
+  dx: number;
+  dy: number;
+  paused: boolean;
+}
+
 let drag: ItemDrag | null = null;
 let lineDrag: LineDrag | null = null;
+let vertexDrag: VertexDrag | null = null;
 
 /** Snap a world coordinate to the grid when grid snapping is enabled. */
 function gridPoint(x: number, y: number, gridOn: boolean): { x: number; y: number } {
@@ -40,10 +52,11 @@ function gridPoint(x: number, y: number, gridOn: boolean): { x: number; y: numbe
 
 /** Resume history if a gesture had paused it, and clear all drag state. */
 function endGesture() {
-  const paused = drag?.paused || lineDrag?.paused;
+  const paused = drag?.paused || lineDrag?.paused || vertexDrag?.paused;
   if (paused) usePlannerStore.getState().resumeHistory();
   drag = null;
   lineDrag = null;
+  vertexDrag = null;
 }
 
 export const selectTool: ToolDescriptor = {
@@ -90,6 +103,16 @@ export const selectTool: ToolDescriptor = {
           const start = gridPoint(e.x, e.y, store.snapMask.grid);
           lineDrag = { lineId: e.targetId, lastX: start.x, lastY: start.y, paused: false };
         }
+
+        // Prepare to drag a corner. We grab by absolute position (grid-aligned)
+        // and record the grab offset so the corner doesn't jump to the cursor.
+        if (e.targetKind === 'vertices') {
+          const layer = store.scene.layers[store.scene.selectedLayer];
+          const v = layer.vertices[e.targetId];
+          if (v) {
+            vertexDrag = { vertexId: e.targetId, dx: v.x - e.x, dy: v.y - e.y, paused: false };
+          }
+        }
         return;
       }
 
@@ -98,6 +121,25 @@ export const selectTool: ToolDescriptor = {
     },
 
     onPointerMove(e: PlannerPointerEvent) {
+      // Corner drag takes precedence if a vertex drag is active.
+      if (vertexDrag) {
+        if (e.originalEvent.buttons === 0) {
+          endGesture();
+          return;
+        }
+        const store = usePlannerStore.getState();
+        const target = gridPoint(e.x + vertexDrag.dx, e.y + vertexDrag.dy, store.snapMask.grid);
+        const v = store.scene.layers[store.scene.selectedLayer].vertices[vertexDrag.vertexId];
+        if (v && (v.x !== target.x || v.y !== target.y)) {
+          if (!vertexDrag.paused) {
+            store.pauseHistory();
+            vertexDrag.paused = true;
+          }
+          store.moveVertex(vertexDrag.vertexId, target.x, target.y);
+        }
+        return;
+      }
+
       // Wall translation takes precedence if a wall drag is active.
       if (lineDrag) {
         if (e.originalEvent.buttons === 0) {
@@ -135,7 +177,7 @@ export const selectTool: ToolDescriptor = {
     },
 
     onPointerUp() {
-      if (!drag && !lineDrag) return;
+      if (!drag && !lineDrag && !vertexDrag) return;
       endGesture();
     },
 
