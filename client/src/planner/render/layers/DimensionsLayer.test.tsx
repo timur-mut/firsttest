@@ -21,18 +21,21 @@ function renderLayer() {
 }
 
 describe('DimensionsLayer', () => {
-  it('renders one dimension label per wall (7 in the fixture)', () => {
+  it('renders an inner dimension label per room wall (shared wall once per room)', () => {
     const { container } = renderLayer();
     const labels = container.querySelectorAll('[data-dimension-for]');
-    expect(labels.length).toBe(7);
-    // One <text> per label.
-    expect(container.querySelectorAll('text').length).toBe(7);
+    // Left + right rooms have 4 walls each; the shared middle wall is measured
+    // from both rooms, so 8 labels cover the 7 walls.
+    expect(labels.length).toBe(8);
+    expect(container.querySelectorAll('text').length).toBe(8);
   });
 
-  it('formats the 400 cm top-left wall (v1->v2) as 4.00 m', () => {
+  it('measures walls on the INSIDE: the top-left wall reads 3.70 m, not 4.00 m', () => {
     const { container } = renderLayer();
+    // Outer (vertex-to-vertex) is 400 cm; the inner face is 370 cm after the
+    // adjacent walls inset (left wall 20, shared middle wall 10 on this side).
     const topLeft = container.querySelector('[data-dimension-for="l-top-left"] text');
-    expect(topLeft?.textContent).toBe('4.00 m');
+    expect(topLeft?.textContent).toBe('3.70 m');
   });
 
   it('renders a non-interactive group', () => {
