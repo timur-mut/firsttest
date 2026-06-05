@@ -6,7 +6,11 @@
 import type { Scene } from '../contract/types';
 import { deserializeScene, serializeScene } from './serialize';
 
-const PLANS_URL = '/api/plans';
+// In dev, VITE_API_URL is empty and requests go to /api via the Vite proxy. In
+// production it is the deployed API origin (the client and API are served from
+// different CloudFront distributions), so a relative path would hit the static
+// site instead of the API.
+const PLANS_URL = `${import.meta.env.VITE_API_URL ?? ''}/api/plans`;
 
 /** Plan list item (no scene payload). */
 export interface PlanSummary {
