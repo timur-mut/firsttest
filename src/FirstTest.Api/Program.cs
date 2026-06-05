@@ -14,6 +14,7 @@ var connectionString = builder.Configuration.GetConnectionString("Postgres")
 builder.Services.AddSingleton<IDbConnectionFactory>(
     _ => new NpgsqlConnectionFactory(connectionString));
 builder.Services.AddScoped<ITodoRepository, TodoRepository>();
+builder.Services.AddScoped<IPlanRepository, PlanRepository>();
 
 builder.Services.AddOpenApi();
 
@@ -50,5 +51,6 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy" }))
    .WithTags("System");
 
 app.MapTodoEndpoints();
+app.MapPlanEndpoints();
 
 app.Run();

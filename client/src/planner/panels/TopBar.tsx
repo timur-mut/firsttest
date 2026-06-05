@@ -4,10 +4,12 @@
 // the theme switcher. The File-action API and store action signatures are frozen.
 
 import { useEffect, useRef, useState } from 'react';
-import { Minus, Plus } from 'lucide-react';
+import { Cloud, FolderOpen, Minus, Plus } from 'lucide-react';
 import { usePlannerStore } from '../store';
 import { clamp, ZOOM_MAX, ZOOM_MIN } from '../config';
 import { exportToFile, importFromFile, loadFromLocal, saveToLocal } from '../persistence/storage';
+import { savePlanToServer, updatePlanOnServer } from '../persistence/api';
+import { useAppStore } from '@/app/appStore';
 import { ThemeSwitcher } from '@/components/theme-switcher';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,12 +21,14 @@ export function TopBar() {
   const setZoom = usePlannerStore((s) => s.setZoom);
   const renameProject = usePlannerStore((s) => s.renameProject);
   const resetScene = usePlannerStore((s) => s.resetScene);
+  const showPlans = useAppStore((s) => s.showPlans);
 
   const fileInput = useRef<HTMLInputElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
+  const [cloud, setCloud] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   // Keep the draft in sync when the underlying name changes (load/import/new)
   // and we're not actively editing.
@@ -74,6 +78,27 @@ export function TopBar() {
   function onSave() {
     saveToLocal(usePlannerStore.getState().scene);
   }
+
+  // Save to the database: update the bound plan, or create a new one.
+  async function onCloudSave() {
+    const scene = usePlannerStore.getState().scene;
+    const currentId = useAppStore.getState().currentPlanId;
+    setCloud('saving');
+    try {
+      const saved = currentId
+        ? await updatePlanOnServer(currentId, scene.name, scene)
+        : await savePlanToServer(scene.name, scene);
+      useAppStore.getState().setCurrentPlan(saved.id);
+      setCloud('saved');
+      window.setTimeout(() => setCloud('idle'), 2000);
+    } catch {
+      setCloud('error');
+      window.setTimeout(() => setCloud('idle'), 3000);
+    }
+  }
+
+  const cloudLabel =
+    cloud === 'saving' ? 'Saving…' : cloud === 'saved' ? 'Saved ✓' : cloud === 'error' ? 'Error' : 'Cloud Save';
   function onOpen() {
     const scene = loadFromLocal();
     if (scene) usePlannerStore.getState().setScene(scene);
@@ -125,6 +150,19 @@ export function TopBar() {
       )}
 
       <div className="ml-4 flex items-center gap-1">
+        <Button variant="outline" size="sm" onClick={showPlans}>
+          <FolderOpen className="size-4" /> Plans
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void onCloudSave()}
+          disabled={cloud === 'saving'}
+          title="Save this plan to the database"
+        >
+          <Cloud className="size-4" /> {cloudLabel}
+        </Button>
+        <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
         <Button variant="ghost" size="sm" onClick={onNew}>New</Button>
         <Button variant="ghost" size="sm" onClick={onSave}>Save</Button>
         <Button variant="ghost" size="sm" onClick={onOpen}>Open</Button>
