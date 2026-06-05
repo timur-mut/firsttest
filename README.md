@@ -1,198 +1,47 @@
-# FirstTest
+# Planner — 2D Floor Planner
 
-A starter web application scaffold.
+A Planner5D-like **2D floor planner** (inspired by [cvdlab/react-planner](https://github.com/cvdlab/react-planner), reimplemented in TypeScript). Draw walls, add doors/windows and furniture, detect rooms, and save plans to a database.
 
-| Layer  | Technology |
-|--------|------------|
+| Layer | Technology |
+|-------|------------|
+| Client | React 18 · TypeScript · Vite 5 · Tailwind 4 · Zustand + Immer · SVG rendering |
+| API | .NET 10 Minimal API · Dapper (queries) · DbUp (migrations) · Npgsql |
 | Database | PostgreSQL 16 |
-| API | .NET 8 Minimal API · Dapper (queries) · DbUp (migrations) · Npgsql |
-| Client | React 18 · Vite · TypeScript |
 | Local dev | Docker Compose |
-| Cloud (free tier) | Azure Static Web Apps (client) · Azure App Service F1 (API) · external free Postgres — Neon/Supabase (Bicep IaC) |
-| CI/CD | GitHub Actions |
+| Cloud | AWS — CloudFront + S3 (client), Elastic Beanstalk (API), managed Postgres |
+| CI/CD | GitHub Actions (build/test + deploy) |
 
-## Repository layout
+## Documentation
 
-```
-first test/
-├── FirstTest.sln
-├── docker-compose.yml          # Postgres + API + client for local dev
-├── src/FirstTest.Api/          # .NET 8 Minimal API
-│   ├── Program.cs              # composition root, CORS, Swagger, runs migrations
-│   ├── Endpoints/              # MapTodoEndpoints — REST routes
-│   ├── Models/                 # records + request DTOs
-│   ├── Data/                   # Dapper repository + connection factory
-│   ├── Migrations/             # DbUp runner
-│   │   └── Scripts/*.sql        # embedded, ordered migration scripts
-│   └── Dockerfile
-├── client/                     # React + Vite + TS
-│   ├── src/api/todos.ts        # typed fetch client
-│   ├── src/App.tsx
-│   └── Dockerfile              # builds static site, served by nginx
-├── infra/bicep/                # Azure infrastructure as code
-│   ├── main.bicep
-│   └── main.parameters.json
-└── .github/workflows/          # ci.yml + deploy.yml
-```
+- **[User guide](docs/user-guide.md)** — every tool, interaction, panel, and shortcut.
+- **[Architecture](docs/architecture.md)** — the scene model, store, render layers, tools, wall‑thickness geometry, and backend.
+- **[Development](docs/development.md)** — run, build, test, deploy; project layout; how to extend it.
+- **[API reference](docs/api.md)** — the REST endpoints (`/api/plans`, `/api/todos`).
 
-## Prerequisites
+## Quick start
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download)
-- [Node.js 22+](https://nodejs.org/)
-- [Docker](https://www.docker.com/) (for the local database / compose)
-
-## Run locally
-
-### Option A — full stack with Docker Compose
+Prerequisites: [.NET 10 SDK](https://dotnet.microsoft.com/download), [Node 22+](https://nodejs.org/), [Docker](https://www.docker.com/).
 
 ```bash
-docker compose up --build
+# 1. Database
+docker compose up -d db                 # Postgres on :5432
+
+# 2. API (runs DB migrations on startup → :5080)
+dotnet run --project src/FirstTest.Api
+
+# 3. Client (Vite dev server on :5173, proxies /api → :5080)
+cd client && npm install && npm run dev
 ```
 
-- Client: http://localhost:8081
-- API + Swagger: http://localhost:5080/swagger
-- Postgres: localhost:5432 (`firsttest` / `firsttest`)
+Open http://localhost:5173. Or run the whole stack with `docker compose up --build` (client on :8081, API on :5080).
 
-### Option B — run each piece directly
+## What it does (at a glance)
 
-1. Start a database:
+- **Draw** chained walls; **split** a wall to add a corner; place **doors/windows** and **furniture** (searchable, drag‑and‑drop catalog).
+- **Edit** by dragging: move walls, corners, furniture (move/rotate/**resize**), and doors/windows; pan and zoom.
+- **Thickness‑aware geometry**: vertices are the outer corners, walls are drawn inward with mitered joints (and a **step** where collinear walls differ in thickness); rooms are detected automatically with **inner area + perimeter** and **inside** wall dimensions.
+- **Properties**: wall thickness, door orientation, furniture size/rotation/color, **room name** and color.
+- **Persistence**: localStorage autosave, JSON export/import, and **database‑backed plans** with a list view and Cloud Save.
+- **Undo/redo** for every edit, with grid/vertex/line **snapping**.
 
-   ```bash
-   docker compose up -d db
-   ```
-
-2. Run the API (applies DbUp migrations on startup, seeds sample todos):
-
-   ```bash
-   dotnet run --project src/FirstTest.Api
-   ```
-
-   Swagger UI at http://localhost:5080/swagger.
-
-3. Run the client:
-
-   ```bash
-   cd client
-   npm install
-   npm run dev
-   ```
-
-   App at http://localhost:5173. In dev the client proxies `/api` to the API
-   (see `vite.config.ts`), so there are no CORS issues.
-
-## API surface
-
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET    | `/health`          | Liveness probe |
-| GET    | `/api/todos`       | List todos |
-| GET    | `/api/todos/{id}`  | Get one |
-| POST   | `/api/todos`       | Create `{ "title": "..." }` |
-| PUT    | `/api/todos/{id}`  | Update `{ "title": "...", "isComplete": true }` |
-| DELETE | `/api/todos/{id}`  | Delete |
-
-## Database migrations
-
-Migrations are plain `.sql` files in `src/FirstTest.Api/Migrations/Scripts`,
-embedded into the assembly and applied **in filename order** by DbUp on API
-startup. DbUp records applied scripts in a `schemaversions` table, so each runs
-once. To add a change, drop a new file (e.g. `0003_add_due_date.sql`) — the
-numeric prefix controls ordering.
-
-You can disable startup migrations by setting `RunMigrationsOnStartup` to
-`false` in configuration (useful if you'd rather run them as a separate
-release step).
-
-## Source control — GitHub
-
-```bash
-cd "first test"
-git init
-git add .
-git commit -m "Initial scaffold"
-git branch -M main
-git remote add origin https://github.com/<you>/firsttest.git
-git push -u origin main
-```
-
-## Deploy to Azure (free tier)
-
-This setup runs at **$0** using only free resources:
-
-| Piece  | Azure resource | Cost |
-|--------|----------------|------|
-| Client | Static Web Apps — Free SKU | Free, permanent |
-| API    | App Service — F1 (Free) Linux plan | Free, permanent |
-| DB     | External free Postgres (**Neon** or **Supabase**) | Free, permanent |
-
-> **Why not Azure PostgreSQL?** Azure's PostgreSQL Flexible Server has no
-> permanent free tier (only "free for 12 months" on a brand-new account). Neon
-> and Supabase both offer a genuinely forever-free Postgres, and the app only
-> needs a connection string — no code changes.
->
-> **F1 free-tier limits:** shared CPU, 60 min CPU/day, no "always on" (the API
-> sleeps when idle, so the first request after a pause is slow), 1 GB storage.
-> Fine for demos, not production.
-
-### 1. Create a free Postgres database
-
-Sign up at [Neon](https://neon.tech) or [Supabase](https://supabase.com), create
-a database, and copy its connection details into an ADO.NET / Npgsql connection
-string. SSL is required:
-
-```
-Host=<host>;Port=5432;Database=<db>;Username=<user>;Password=<pwd>;SSL Mode=Require;Trust Server Certificate=true
-```
-
-DbUp migrations run automatically on the API's first startup and seed the sample
-todos.
-
-### 2. Provision the Azure resources
-
-You can use the portal, or the included Bicep (`infra/bicep/main.bicep`), which
-creates the F1 App Service plan, the web app, and the Static Web App:
-
-```bash
-az group create -n firsttest-rg -l westeurope
-az deployment group create -g firsttest-rg \
-  -f infra/bicep/main.bicep \
-  -p appName=firsttest \
-  -p pgConnectionString='Host=...;SSL Mode=Require;Trust Server Certificate=true' \
-  -p clientOrigin='https://<your-swa>.azurestaticapps.net'
-```
-
-(`clientOrigin` is the Static Web App URL, for CORS — you can re-run the
-deployment to set it once the SWA exists, or set it later in the portal under
-the web app's Configuration.)
-
-### 3. Wire up GitHub → Azure
-
-Add these in GitHub → Settings → Secrets and variables → Actions:
-
-| Name | Type | Purpose |
-|------|------|---------|
-| `AZURE_WEBAPP_PUBLISH_PROFILE`     | secret | Web app → "Get publish profile" (download & paste contents) |
-| `AZURE_STATIC_WEB_APPS_API_TOKEN`  | secret | Static Web App → "Manage deployment token" |
-| `VITE_API_URL`                     | variable | Your API URL, e.g. `https://firsttest-api.azurewebsites.net` |
-
-Also set `AZURE_WEBAPP_NAME` in `.github/workflows/deploy.yml` to your web app's
-(globally-unique) name.
-
-### 4. Deploy
-
-- `.github/workflows/deploy.yml` — on pushes touching `src/**`, publishes the
-  .NET API and deploys it to App Service via the publish profile.
-- `.github/workflows/azure-static-web-apps.yml` — on pushes touching `client/**`,
-  builds the Vite app (baking in `VITE_API_URL`) and deploys it to Static Web Apps.
-
-Both can also be run manually from the Actions tab. After the first deploy, set
-the web app's `Cors__AllowedOrigins` to your SWA URL so the browser can call the
-API.
-
-## Next steps / ideas
-
-- Add unit tests (`FirstTest.Api.Tests`) — the CI workflow already runs `dotnet test`.
-- Add a separate migration job in CI rather than migrating on app startup.
-- Add authentication (e.g. Microsoft Entra ID) to the API and client.
-- Move to paid tiers (App Service B1 + Azure PostgreSQL) when you need
-  always-on and production SLAs.
+See the **[user guide](docs/user-guide.md)** for the full list.
