@@ -136,6 +136,7 @@ export type Mode =
   | 'idle'
   | 'drawing-wall'
   | 'drawing-hole'
+  | 'splitting-wall'
   | 'placing-item'
   | 'dragging-vertex'
   | 'dragging-item'
