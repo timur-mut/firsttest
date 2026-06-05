@@ -144,6 +144,32 @@ export function PropertiesPanel() {
                   onCommit={(n) => store.getState().updateHole(hole.id, { altitude: n })}
                 />
               </Field>
+              {hole.type === 'door' && (
+                <Field label="Orientation">
+                  <div className="flex gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 flex-1 px-2"
+                      aria-label="Flip door hinge"
+                      title="Flip hinge side"
+                      onClick={() => store.getState().updateHole(hole.id, { flipX: !hole.flipX })}
+                    >
+                      Hinge
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 flex-1 px-2"
+                      aria-label="Flip door swing"
+                      title="Flip swing side"
+                      onClick={() => store.getState().updateHole(hole.id, { flipY: !hole.flipY })}
+                    >
+                      Swing
+                    </Button>
+                  </div>
+                </Field>
+              )}
             </section>
           )}
 
@@ -164,9 +190,11 @@ export function PropertiesPanel() {
                       </span>
                     </Field>
                     <Field label="Thickness">
-                      <span className="block text-right text-xs tabular-nums">
-                        {line.thickness}
-                      </span>
+                      <NumberInput
+                        value={line.thickness}
+                        min={1}
+                        onCommit={(n) => store.getState().setLineThickness(line.id, n)}
+                      />
                     </Field>
                     <Field label="Height">
                       <span className="block text-right text-xs tabular-nums">

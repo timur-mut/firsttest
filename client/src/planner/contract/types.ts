@@ -51,6 +51,13 @@ export interface Hole {
   height: number;
   /** Distance of the hole bottom from the floor, in world units. */
   altitude: number;
+  /**
+   * Door orientation. `flipX` mirrors the hinge to the other jamb (along the
+   * wall); `flipY` mirrors the swing to the other side of the wall. Together
+   * they give the four door orientations. Ignored by windows. Defaults false.
+   */
+  flipX?: boolean;
+  flipY?: boolean;
 }
 
 /** A furniture / catalog item placed in the scene. */

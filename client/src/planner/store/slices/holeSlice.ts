@@ -14,8 +14,11 @@ export interface HoleSlice {
   moveHole(holeId: string, offset: number): void;
   /** Delete a hole. */
   removeHole(holeId: string): void;
-  /** Update editable hole properties (width/height/altitude). */
-  updateHole(holeId: string, patch: Partial<{ width: number; height: number; altitude: number }>): void;
+  /** Update editable hole properties (width/height/altitude, door orientation). */
+  updateHole(
+    holeId: string,
+    patch: Partial<{ width: number; height: number; altitude: number; flipX: boolean; flipY: boolean }>,
+  ): void;
 }
 
 /** Sensible per-type defaults for a freshly placed hole. */
@@ -94,6 +97,8 @@ export const createHoleSlice: SliceCreator<HoleSlice> = (mutate) => ({
       if (patch.width !== undefined) hole.width = patch.width;
       if (patch.height !== undefined) hole.height = patch.height;
       if (patch.altitude !== undefined) hole.altitude = patch.altitude;
+      if (patch.flipX !== undefined) hole.flipX = patch.flipX;
+      if (patch.flipY !== undefined) hole.flipY = patch.flipY;
       // A width change may invalidate the current offset; re-clamp.
       if (patch.width !== undefined) {
         hole.offset = clampOffset(hole.offset, lineLength(layer, hole.lineId), hole.width);

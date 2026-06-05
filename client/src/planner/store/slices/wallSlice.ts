@@ -41,6 +41,8 @@ export interface WallSlice {
    * endpoints. Shared corners move too, so adjacent walls follow.
    */
   moveLine(lineId: string, dx: number, dy: number): void;
+  /** Set a wall's thickness (clamped to a sensible minimum). */
+  setLineThickness(lineId: string, thickness: number): void;
   /** Delete a wall (and orphaned vertices / holes). */
   removeLine(lineId: string): void;
 }
@@ -180,6 +182,13 @@ export const createWallSlice: SliceCreator<WallSlice> = (mutate) => ({
         v.y += dy;
       }
       applyDerived(layer);
+    }),
+
+  setLineThickness: (lineId, thickness) =>
+    mutate((d) => {
+      const line = getSelectedLayer(d.scene).lines[lineId];
+      if (!line) return;
+      line.thickness = Math.max(1, thickness);
     }),
 
   removeLine: (lineId) =>

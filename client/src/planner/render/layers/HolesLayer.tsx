@@ -87,13 +87,15 @@ function HoleGlyph({ hole, geo }: { hole: Hole; geo: HoleGeometry }) {
 
       {hole.type === 'door' ? (
         <DoorGlyph
-          hingeX={ax}
-          hingeY={ay}
-          leafX={bx}
-          leafY={by}
+          ax={ax}
+          ay={ay}
+          bx={bx}
+          by={by}
           nx={nx}
           ny={ny}
           width={hole.width}
+          flipX={hole.flipX ?? false}
+          flipY={hole.flipY ?? false}
         />
       ) : (
         <WindowGlyph ax={ax} ay={ay} bx={bx} by={by} nx={nx} ny={ny} thickness={thickness} />
@@ -102,29 +104,46 @@ function HoleGlyph({ hole, geo }: { hole: Hole; geo: HoleGeometry }) {
   );
 }
 
-/** Door: a quarter-circle swing arc plus the leaf line, hinged at one jamb. */
+/**
+ * Door: a quarter-circle swing arc plus the leaf line, hinged at one jamb.
+ * Orientation is controlled by two flips:
+ *  • flipX swaps the hinge to the other jamb (mirror along the wall)
+ *  • flipY swings the leaf to the other side of the wall (mirror across it)
+ */
 function DoorGlyph({
-  hingeX,
-  hingeY,
-  leafX,
-  leafY,
+  ax,
+  ay,
+  bx,
+  by,
   nx,
   ny,
   width,
+  flipX,
+  flipY,
 }: {
-  hingeX: number;
-  hingeY: number;
-  leafX: number;
-  leafY: number;
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
   nx: number;
   ny: number;
   width: number;
+  flipX: boolean;
+  flipY: boolean;
 }) {
-  // The leaf swings from the far jamb to a point perpendicular off the hinge.
-  const openX = hingeX + nx * width;
-  const openY = hingeY + ny * width;
-  // Sweep flag chosen so the arc bulges toward the open leaf side.
-  const arc = `M ${leafX} ${leafY} A ${width} ${width} 0 0 1 ${openX} ${openY}`;
+  // Hinge at one jamb, leaf at the other.
+  const hingeX = flipX ? bx : ax;
+  const hingeY = flipX ? by : ay;
+  const leafX = flipX ? ax : bx;
+  const leafY = flipX ? ay : by;
+  // The open leaf points perpendicular off the hinge, on the chosen side.
+  const sign = flipY ? -1 : 1;
+  const openX = hingeX + nx * width * sign;
+  const openY = hingeY + ny * width * sign;
+  // Sweep flag so the arc bulges from the closed leaf toward the open position.
+  const cross = (leafX - hingeX) * (openY - hingeY) - (leafY - hingeY) * (openX - hingeX);
+  const sweep = cross > 0 ? 1 : 0;
+  const arc = `M ${leafX} ${leafY} A ${width} ${width} 0 0 ${sweep} ${openX} ${openY}`;
   return (
     <g>
       <path d={arc} className="fill-none stroke-foreground/60" strokeWidth={1.5} />
