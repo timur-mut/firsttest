@@ -22,7 +22,7 @@
 
 import type { Area, Layer, Line, Point } from '../contract/types';
 import {
-  insetPolygon,
+  lineIntersection,
   polygonArea,
   polygonCentroid,
   polygonPerimeter,
@@ -258,6 +258,120 @@ function lineBetween(layer: Layer, a: string, b: string): Line | undefined {
 }
 
 /** Compute outer/inner geometry, area, perimeter and wall quads for each room. */
+const EPS = 1e-6;
+/** Beyond this × thickness, a sharp miter is bevelled to its perpendicular feet. */
+const MITER_LIMIT = 6;
+
+interface InnerWalls {
+  /** Inner corner of each wall at its START vertex. */
+  starts: Point[];
+  /** Inner corner of each wall at its END vertex. */
+  ends: Point[];
+  /** The room's inner boundary (floor), with steps included. */
+  floor: Point[];
+}
+
+/**
+ * Inset each wall of a closed cycle inward by its own thickness, computing each
+ * wall's inner corners INDEPENDENTLY. Where two walls turn, their inner lines
+ * intersect → a shared mitered corner. Where two walls are collinear (the wall
+ * continues, 180°) but have different thickness, their inner lines are parallel
+ * → each wall ends at its own perpendicular foot, so the inner boundary has a
+ * STEP between the two thicknesses. The floor polygon includes those steps.
+ */
+function insetWalls(outer: Point[], dist: number[]): InnerWalls {
+  const n = outer.length;
+  if (n < 3) {
+    const copy = outer.map((p) => ({ ...p }));
+    return { starts: copy, ends: copy.map((p) => ({ ...p })), floor: copy.map((p) => ({ ...p })) };
+  }
+
+  const edges = outer.map((p, i) => {
+    const q = outer[(i + 1) % n];
+    let ux = q.x - p.x;
+    let uy = q.y - p.y;
+    const len = Math.hypot(ux, uy) || 1;
+    ux /= len;
+    uy /= len;
+    return { p, q, ux, uy, t: dist[i] };
+  });
+
+  // Determine the inward normal sign once: the offset that shrinks the polygon.
+  const offsetLines = (sgn: number) =>
+    edges.map((e) => ({
+      point: { x: e.p.x + sgn * -e.uy * e.t, y: e.p.y + sgn * e.ux * e.t },
+      dir: { x: e.ux, y: e.uy },
+    }));
+  const miterPoly = (ls: { point: Point; dir: Point }[]) =>
+    ls.map((cur, i) => {
+      const prev = ls[(i - 1 + n) % n];
+      return lineIntersection(prev.point, prev.dir, cur.point, cur.dir) ?? cur.point;
+    });
+  const sign = polygonArea(miterPoly(offsetLines(1))) <= polygonArea(miterPoly(offsetLines(-1)))
+    ? 1
+    : -1;
+
+  // Per-edge inner line (offset inward by the edge's thickness).
+  const ls = edges.map((e) => {
+    const nx = sign * -e.uy;
+    const ny = sign * e.ux;
+    return { point: { x: e.p.x + nx * e.t, y: e.p.y + ny * e.t }, dir: { x: e.ux, y: e.uy }, nx, ny };
+  });
+
+  // Inner corner of edge `eMain` at vertex `v`, met with neighbour `eOther`.
+  // Falls back to eMain's perpendicular foot at `v` (the step / bevel).
+  const corner = (v: Point, eOther: number, eMain: number): Point => {
+    const ip = lineIntersection(ls[eOther].point, ls[eOther].dir, ls[eMain].point, ls[eMain].dir);
+    const limit = MITER_LIMIT * Math.max(edges[eMain].t, edges[eOther].t, 1);
+    if (ip && Math.hypot(ip.x - v.x, ip.y - v.y) <= limit) return ip;
+    return { x: v.x + ls[eMain].nx * edges[eMain].t, y: v.y + ls[eMain].ny * edges[eMain].t };
+  };
+
+  const starts: Point[] = [];
+  const ends: Point[] = [];
+  for (let i = 0; i < n; i++) {
+    starts[i] = corner(outer[i], (i - 1 + n) % n, i);
+    ends[i] = corner(outer[(i + 1) % n], (i + 1) % n, i);
+  }
+
+  // Stepped inner boundary: walk start->end of each wall, dropping points that
+  // coincide (mitered corners) so only genuine steps add vertices.
+  const floor: Point[] = [];
+  const push = (p: Point) => {
+    const last = floor[floor.length - 1];
+    if (!last || Math.hypot(p.x - last.x, p.y - last.y) > EPS) floor.push(p);
+  };
+  for (let i = 0; i < n; i++) {
+    push(starts[i]);
+    push(ends[i]);
+  }
+  if (floor.length > 1) {
+    const a = floor[0];
+    const b = floor[floor.length - 1];
+    if (Math.hypot(a.x - b.x, a.y - b.y) <= EPS) floor.pop();
+  }
+
+  // Drop redundant collinear vertices (e.g. a same-thickness collinear join),
+  // keeping genuine corners and steps (a step is a perpendicular jog, not
+  // collinear with its neighbours).
+  return { starts, ends, floor: simplifyCollinear(floor) };
+}
+
+/** Remove points that lie on the straight line between their neighbours. */
+function simplifyCollinear(poly: Point[]): Point[] {
+  const n = poly.length;
+  if (n < 3) return poly;
+  const out: Point[] = [];
+  for (let i = 0; i < n; i++) {
+    const prev = poly[(i - 1 + n) % n];
+    const cur = poly[i];
+    const next = poly[(i + 1) % n];
+    const cross = (cur.x - prev.x) * (next.y - cur.y) - (cur.y - prev.y) * (next.x - cur.x);
+    if (Math.abs(cross) > EPS) out.push(cur);
+  }
+  return out.length >= 3 ? out : poly;
+}
+
 export function computeRooms(layer: Layer): RoomGeometry[] {
   const cycles = detectRoomCycles(layer);
 
@@ -281,24 +395,24 @@ export function computeRooms(layer: Layer): RoomGeometry[] {
       const shared = (lineRoomCount.get(line.id) ?? 1) >= 2;
       return shared ? line.thickness / 2 : line.thickness;
     });
-    const inner = insetPolygon(outer, insetDist);
+    const { starts, ends, floor } = insetWalls(outer, insetDist);
 
     const walls: RoomWall[] = [];
     for (let i = 0; i < outer.length; i++) {
       const line = lines[i];
       if (!line) continue;
       const j = (i + 1) % outer.length;
-      walls.push({ lineId: line.id, quad: [outer[i], outer[j], inner[j], inner[i]] });
+      walls.push({ lineId: line.id, quad: [outer[i], outer[j], ends[i], starts[i]] });
     }
 
     return {
       cycle,
       outer,
-      inner,
-      area: polygonArea(inner),
-      perimeter: polygonPerimeter(inner),
+      inner: floor,
+      area: polygonArea(floor),
+      perimeter: polygonPerimeter(floor),
       walls,
-      centroid: polygonCentroid(inner),
+      centroid: polygonCentroid(floor),
     };
   });
 }
