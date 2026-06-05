@@ -9,12 +9,13 @@
 import type { Mode } from '../contract/types';
 import type { ToolDescriptor } from '../contract/toolTypes';
 import { selectTool } from './selectTool';
+import { panTool } from './panTool';
 import { wallTool } from './wallTool';
 import { holeTool } from './holeTool';
 import { itemTool } from './itemTool';
 
 /** All tools, in toolbar order. */
-export const TOOLS: ToolDescriptor[] = [selectTool, wallTool, holeTool, itemTool];
+export const TOOLS: ToolDescriptor[] = [selectTool, panTool, wallTool, holeTool, itemTool];
 
 /** The tool whose `mode` matches the current editor mode (if any). */
 export function toolForMode(mode: Mode): ToolDescriptor | undefined {

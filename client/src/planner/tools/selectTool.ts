@@ -9,6 +9,8 @@
 //    (one undo step for the whole gesture)
 //  • drag a selected item's ROTATE handle to rotate it about its centre
 //    (Shift snaps to 15°; one undo step for the whole gesture)
+//  • drag empty canvas to PAN the whole view (a plain click still clears the
+//    selection); view changes are not undoable
 
 import { usePlannerStore } from '../store';
 import { snapToGrid } from '../contract/snapping';
@@ -49,10 +51,27 @@ interface RotationDrag {
   paused: boolean;
 }
 
+/**
+ * Drag-to-pan on empty canvas (left button). Screen-space; not undoable. A
+ * gesture that never crosses the move threshold is treated as a click and
+ * clears the selection instead of panning.
+ */
+interface CanvasPan {
+  startX: number;
+  startY: number;
+  lastX: number;
+  lastY: number;
+  moved: boolean;
+}
+
 let drag: ItemDrag | null = null;
 let lineDrag: LineDrag | null = null;
 let vertexDrag: VertexDrag | null = null;
 let rotationDrag: RotationDrag | null = null;
+let canvasPan: CanvasPan | null = null;
+
+/** Movement (px) before an empty-canvas drag becomes a pan rather than a click. */
+const PAN_THRESHOLD_PX = 3;
 
 const ROTATE_SNAP_DEG = 15;
 
@@ -75,6 +94,7 @@ function endGesture() {
   lineDrag = null;
   vertexDrag = null;
   rotationDrag = null;
+  canvasPan = null;
 }
 
 export const selectTool: ToolDescriptor = {
@@ -143,11 +163,38 @@ export const selectTool: ToolDescriptor = {
         return;
       }
 
-      // Clicked empty canvas → clear selection.
-      store.clearSelection();
+      // Empty canvas: begin a pan-or-clear gesture. We pan if the pointer moves
+      // past the threshold, otherwise treat it as a click and clear on up.
+      canvasPan = {
+        startX: e.originalEvent.clientX,
+        startY: e.originalEvent.clientY,
+        lastX: e.originalEvent.clientX,
+        lastY: e.originalEvent.clientY,
+        moved: false,
+      };
     },
 
     onPointerMove(e: PlannerPointerEvent) {
+      // Pan the whole view when dragging empty canvas.
+      if (canvasPan) {
+        if (e.originalEvent.buttons === 0) {
+          canvasPan = null;
+          return;
+        }
+        const { clientX, clientY } = e.originalEvent;
+        if (
+          !canvasPan.moved &&
+          Math.hypot(clientX - canvasPan.startX, clientY - canvasPan.startY) < PAN_THRESHOLD_PX
+        ) {
+          return; // ignore sub-threshold jitter so a click still clears selection
+        }
+        canvasPan.moved = true;
+        usePlannerStore.getState().panBy(clientX - canvasPan.lastX, clientY - canvasPan.lastY);
+        canvasPan.lastX = clientX;
+        canvasPan.lastY = clientY;
+        return;
+      }
+
       // Rotation takes precedence if a rotate gesture is active.
       if (rotationDrag) {
         if (e.originalEvent.buttons === 0) {
@@ -228,6 +275,12 @@ export const selectTool: ToolDescriptor = {
     },
 
     onPointerUp() {
+      // A non-moving empty-canvas gesture is a click → clear the selection.
+      if (canvasPan) {
+        if (!canvasPan.moved) usePlannerStore.getState().clearSelection();
+        canvasPan = null;
+        return;
+      }
       if (!drag && !lineDrag && !vertexDrag && !rotationDrag) return;
       endGesture();
     },
