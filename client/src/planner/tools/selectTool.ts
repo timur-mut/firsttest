@@ -3,8 +3,12 @@
 //  • click an element to select it (shift to extend/toggle)
 //  • click empty space to clear the selection
 //  • drag a selected ITEM to move it (one undo step for the whole gesture)
+//  • drag a selected WALL to translate it — both endpoints move, so adjacent
+//    walls follow (one undo step for the whole gesture)
 
 import { usePlannerStore } from '../store';
+import { snapToGrid } from '../contract/snapping';
+import { GRID_SIZE } from '../config';
 import type { PlannerPointerEvent, ToolDescriptor } from '../contract/toolTypes';
 
 /** Transient drag state for moving a selected item. Not part of the store. */
@@ -17,7 +21,30 @@ interface ItemDrag {
   paused: boolean;
 }
 
+/** Transient drag state for translating a selected wall. */
+interface LineDrag {
+  lineId: string;
+  /** Last applied (grid-snapped when grid snapping is on) world point. */
+  lastX: number;
+  lastY: number;
+  paused: boolean;
+}
+
 let drag: ItemDrag | null = null;
+let lineDrag: LineDrag | null = null;
+
+/** Snap a world coordinate to the grid when grid snapping is enabled. */
+function gridPoint(x: number, y: number, gridOn: boolean): { x: number; y: number } {
+  return gridOn ? { x: snapToGrid(x, GRID_SIZE), y: snapToGrid(y, GRID_SIZE) } : { x, y };
+}
+
+/** Resume history if a gesture had paused it, and clear all drag state. */
+function endGesture() {
+  const paused = drag?.paused || lineDrag?.paused;
+  if (paused) usePlannerStore.getState().resumeHistory();
+  drag = null;
+  lineDrag = null;
+}
 
 export const selectTool: ToolDescriptor = {
   id: 'select',
@@ -54,6 +81,15 @@ export const selectTool: ToolDescriptor = {
             };
           }
         }
+
+        // Prepare to translate a selected wall. Movement is incremental and
+        // grid-aligned (grid snapping only — never snap a wall onto another
+        // wall while dragging the body), so the wall keeps its shape and shifts
+        // in clean grid steps.
+        if (e.targetKind === 'lines') {
+          const start = gridPoint(e.x, e.y, store.snapMask.grid);
+          lineDrag = { lineId: e.targetId, lastX: start.x, lastY: start.y, paused: false };
+        }
         return;
       }
 
@@ -62,11 +98,32 @@ export const selectTool: ToolDescriptor = {
     },
 
     onPointerMove(e: PlannerPointerEvent) {
+      // Wall translation takes precedence if a wall drag is active.
+      if (lineDrag) {
+        if (e.originalEvent.buttons === 0) {
+          endGesture();
+          return;
+        }
+        const store = usePlannerStore.getState();
+        const cur = gridPoint(e.x, e.y, store.snapMask.grid);
+        const dx = cur.x - lineDrag.lastX;
+        const dy = cur.y - lineDrag.lastY;
+        if (dx !== 0 || dy !== 0) {
+          if (!lineDrag.paused) {
+            store.pauseHistory();
+            lineDrag.paused = true;
+          }
+          store.moveLine(lineDrag.lineId, dx, dy);
+          lineDrag.lastX = cur.x;
+          lineDrag.lastY = cur.y;
+        }
+        return;
+      }
+
       if (!drag) return;
       if (e.originalEvent.buttons === 0) {
         // Button released outside our up handler — end the gesture cleanly.
-        if (drag.paused) usePlannerStore.getState().resumeHistory();
-        drag = null;
+        endGesture();
         return;
       }
       const store = usePlannerStore.getState();
@@ -78,15 +135,13 @@ export const selectTool: ToolDescriptor = {
     },
 
     onPointerUp() {
-      if (!drag) return;
-      if (drag.paused) usePlannerStore.getState().resumeHistory();
-      drag = null;
+      if (!drag && !lineDrag) return;
+      endGesture();
     },
 
     onDeactivate() {
       // Drop any in-progress drag if the user switches tools mid-gesture.
-      if (drag?.paused) usePlannerStore.getState().resumeHistory();
-      drag = null;
+      endGesture();
     },
   },
 };
