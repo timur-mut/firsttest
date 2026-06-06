@@ -1,14 +1,11 @@
 // Plans list view — browse, open, delete, and start saved plans from the DB.
+// This is the app's home route ("/"); opening a plan navigates to
+// "/editor/$planId" (the route loader fetches and loads the scene).
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, FileText, Plus, RefreshCw, Trash2 } from 'lucide-react';
-import { useAppStore } from './appStore';
+import { FileText, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { router } from './router';
 import { usePlannerStore } from '@/planner/store';
-import {
-  deletePlanFromServer,
-  listPlans,
-  loadPlanFromServer,
-  type PlanSummary,
-} from '@/planner/persistence/api';
+import { deletePlanFromServer, listPlans, type PlanSummary } from '@/planner/persistence/api';
 import { Button } from '@/components/ui/button';
 
 type Status = 'loading' | 'ready' | 'error';
@@ -19,9 +16,6 @@ function formatWhen(iso: string): string {
 }
 
 export function PlansView() {
-  const showEditor = useAppStore((s) => s.showEditor);
-  const setCurrentPlan = useAppStore((s) => s.setCurrentPlan);
-
   const [plans, setPlans] = useState<PlanSummary[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string>('');
@@ -42,25 +36,15 @@ export function PlansView() {
     void load();
   }, [load]);
 
-  async function openPlan(id: number) {
-    setBusyId(id);
-    try {
-      const scene = await loadPlanFromServer(id);
-      usePlannerStore.getState().setScene(scene);
-      setCurrentPlan(id);
-      showEditor();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to open plan');
-      setStatus('error');
-    } finally {
-      setBusyId(null);
-    }
+  // Navigate to the plan's URL; the "/editor/$planId" route loader fetches and
+  // loads the scene (and surfaces load failures via its error component).
+  function openPlan(id: number) {
+    void router.navigate({ to: '/editor/$planId', params: { planId: String(id) } });
   }
 
   function newPlan() {
     usePlannerStore.getState().resetScene();
-    setCurrentPlan(null);
-    showEditor();
+    void router.navigate({ to: '/editor' });
   }
 
   async function removePlan(id: number) {
@@ -80,9 +64,6 @@ export function PlansView() {
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-card px-3">
-        <Button variant="ghost" size="sm" onClick={showEditor} aria-label="Back to editor">
-          <ArrowLeft className="size-4" /> Editor
-        </Button>
         <span className="font-semibold">My plans</span>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => void load()} aria-label="Refresh">
@@ -156,9 +137,9 @@ export function PlansView() {
                   size="sm"
                   className="mt-1"
                   disabled={busyId === plan.id}
-                  onClick={() => void openPlan(plan.id)}
+                  onClick={() => openPlan(plan.id)}
                 >
-                  {busyId === plan.id ? 'Opening…' : 'Open'}
+                  Open
                 </Button>
               </li>
             ))}

@@ -9,7 +9,7 @@ import { usePlannerStore } from '../store';
 import { clamp, ZOOM_MAX, ZOOM_MIN } from '../config';
 import { exportToFile, importFromFile, loadFromLocal, saveToLocal } from '../persistence/storage';
 import { savePlanToServer, updatePlanOnServer } from '../persistence/api';
-import { useAppStore } from '@/app/appStore';
+import { getCurrentPlanId, router } from '@/app/router';
 import { ThemeSwitcher } from '@/components/theme-switcher';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,6 @@ export function TopBar() {
   const setZoom = usePlannerStore((s) => s.setZoom);
   const renameProject = usePlannerStore((s) => s.renameProject);
   const resetScene = usePlannerStore((s) => s.resetScene);
-  const showPlans = useAppStore((s) => s.showPlans);
 
   const fileInput = useRef<HTMLInputElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
@@ -72,7 +71,12 @@ export function TopBar() {
 
   function onNew() {
     const ok = window.confirm('Start a new blank project? Unsaved changes will be lost.');
-    if (ok) resetScene();
+    if (ok) {
+      resetScene();
+      // Drop any bound plan id from the URL so the next Cloud Save creates a new
+      // plan instead of overwriting the one we were editing.
+      void router.navigate({ to: '/editor' });
+    }
   }
 
   function onSave() {
@@ -82,13 +86,16 @@ export function TopBar() {
   // Save to the database: update the bound plan, or create a new one.
   async function onCloudSave() {
     const scene = usePlannerStore.getState().scene;
-    const currentId = useAppStore.getState().currentPlanId;
+    const currentId = getCurrentPlanId();
     setCloud('saving');
     try {
       const saved = currentId
         ? await updatePlanOnServer(currentId, scene.name, scene)
         : await savePlanToServer(scene.name, scene);
-      useAppStore.getState().setCurrentPlan(saved.id);
+      // Reflect the (possibly new) plan id in the URL so a reload reopens it.
+      if (saved.id !== currentId) {
+        void router.navigate({ to: '/editor/$planId', params: { planId: String(saved.id) } });
+      }
       setCloud('saved');
       window.setTimeout(() => setCloud('idle'), 2000);
     } catch {
@@ -150,7 +157,7 @@ export function TopBar() {
       )}
 
       <div className="ml-4 flex items-center gap-1">
-        <Button variant="outline" size="sm" onClick={showPlans}>
+        <Button variant="outline" size="sm" onClick={() => void router.navigate({ to: '/' })}>
           <FolderOpen className="size-4" /> Plans
         </Button>
         <Button

@@ -1,8 +1,6 @@
-import { useAppStore } from './app/appStore';
-import { PlannerApp } from './planner/PlannerApp';
-import { PlansView } from './app/PlansView';
+import { RouterProvider } from '@tanstack/react-router';
+import { router } from './app/router';
 
 export default function App() {
-  const view = useAppStore((s) => s.view);
-  return view === 'plans' ? <PlansView /> : <PlannerApp />;
+  return <RouterProvider router={router} />;
 }
