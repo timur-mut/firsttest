@@ -79,7 +79,7 @@ export function Toolbar() {
   const groups = groupedTools();
 
   return (
-    <div className="flex w-12 flex-col items-center gap-1 border-r bg-card py-2">
+    <div className="z-10 flex w-12 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r bg-card py-2">
       {groups.map((group, i) => (
         <div key={group[0]?.id ?? i} className="flex flex-col items-center gap-1">
           {i > 0 && <Separator />}

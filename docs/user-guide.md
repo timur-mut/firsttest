@@ -2,6 +2,8 @@
 
 The app opens on the **Plans** screen — a list of your saved plans. Opening a plan (or starting a new one) takes you to the **editor**, whose screen has a **top bar**, a left **toolbar**, a **catalog** sidebar (left), the **canvas** (center), and a **properties** panel (right). The open plan’s id is shown in the URL (`/editor/<id>`), so reloading or sharing that link reopens the plan.
 
+**Collapsible panels & mobile.** The catalog and properties panels are collapsible: use the panel toggles at the left/right ends of the top bar (or the collapse button in each panel’s header) to hide or show them. On desktop the panels dock beside the canvas; on phones they slide in as overlays over the canvas with a dimmed backdrop (tap it to close), and they start collapsed so the canvas gets the full screen. The top bar’s file actions scroll horizontally when space is tight.
+
 ---
 
 ## Toolbar (tools)

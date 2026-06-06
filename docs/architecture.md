@@ -115,6 +115,10 @@ App‑level navigation uses **TanStack Router** (code‑based). The plans list i
 
 The planner is unit‑tested by rendering its components without a `RouterProvider`, so deep components (e.g. `TopBar`) navigate via the exported `router` **singleton** imperatively (`router.navigate(...)`) rather than router hooks. The bound plan id is derived from the URL via `getCurrentPlanId()` (used by Cloud Save to choose create vs. update).
 
+### Collapsible panels & responsive layout
+
+The catalog (left) and properties (right) panels are collapsible, driven by a tiny `usePanelStore` (`client/src/planner/panels/panelStore.ts`) kept separate from the scene store (so panel visibility is never undone or persisted). Toggles live at both ends of the `TopBar`, plus a collapse button in each panel header. Defaults: open on desktop, collapsed on mobile. On desktop (`md+`) panels dock in flow and collapse by width; on mobile they become slide‑in drawers over the canvas (`PlannerApp` renders a tap‑to‑close backdrop). Collapsed panels use `visibility:hidden` so their controls leave the tab/a11y order. The `TopBar`’s file actions live in a horizontally‑scrollable middle so the panel toggles and zoom stay anchored and reachable on small screens.
+
 ---
 
 ## Backend (`src/FirstTest.Api/`)
