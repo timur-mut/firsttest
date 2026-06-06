@@ -4,7 +4,7 @@
 
 ```
 ┌────────────────────────── Client (React + Vite + TS) ──────────────────────────┐
-│  App  ──►  PlannerApp (editor)  │  PlansView (saved plans)     ── app/appStore   │
+│  App ─► RouterProvider:  "/" PlansView  ·  "/editor[/$planId]" PlannerApp (editor) │
 │                                                                                  │
 │  TopBar · Toolbar · CatalogSidebar · Viewport(SVG) · Sidebar/Properties          │
 │                                                                                  │
@@ -103,7 +103,17 @@ This is the “thickness‑aware” model: outer‑corner vertices, inward miter
 - **`storage.ts`** — localStorage save/load, debounced autosave, and file export/import.
 - **`api.ts`** — the DB client: `listPlans`, `loadPlanFromServer`, `savePlanToServer`, `updatePlanOnServer`, `deletePlanFromServer`. Base URL is `import.meta.env.VITE_API_URL ?? ''` (empty in dev → Vite proxy; the API origin in prod). The scene travels as the serialized envelope, stored server‑side as `jsonb`.
 
-App‑level navigation between the editor and the plans list lives in `client/src/app/appStore.ts`.
+## Routing (`client/src/app/router.tsx`)
+
+App‑level navigation uses **TanStack Router** (code‑based). The plans list is the home route; opening a plan puts its id in the URL.
+
+| Route | Screen | Notes |
+|-------|--------|-------|
+| `/` | `PlansView` (saved‑plans list) | the default screen |
+| `/editor` | `PlannerApp` | a new, unsaved plan |
+| `/editor/$planId` | `PlannerApp` | a saved plan — a **loader** fetches it (`loadPlanFromServer`) and loads it into the store before the editor renders, so a direct visit/reload/share of the URL restores the plan; load failures render an error fallback |
+
+The planner is unit‑tested by rendering its components without a `RouterProvider`, so deep components (e.g. `TopBar`) navigate via the exported `router` **singleton** imperatively (`router.navigate(...)`) rather than router hooks. The bound plan id is derived from the URL via `getCurrentPlanId()` (used by Cloud Save to choose create vs. update).
 
 ---
 

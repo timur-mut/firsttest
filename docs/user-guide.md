@@ -1,6 +1,6 @@
 # User guide
 
-The planner is a single-page editor. The screen has a **top bar**, a left **toolbar**, a **catalog** sidebar (left), the **canvas** (center), and a **properties** panel (right). A separate **Plans** screen lists saved plans.
+The app opens on the **Plans** screen — a list of your saved plans. Opening a plan (or starting a new one) takes you to the **editor**, whose screen has a **top bar**, a left **toolbar**, a **catalog** sidebar (left), the **canvas** (center), and a **properties** panel (right). The open plan’s id is shown in the URL (`/editor/<id>`), so reloading or sharing that link reopens the plan.
 
 ---
 
@@ -87,7 +87,7 @@ Top‑bar actions:
 
 ### Plans list
 
-A grid of every plan saved to the database. From here you can **Open** a plan (loads it into the editor), **Delete** a plan, start a **New plan**, **Refresh** the list, or go **back to the Editor**. Empty and error states are shown when there are no plans or the API is unreachable.
+The default screen: a grid of every plan saved to the database. From here you can **Open** a plan (navigates to `/editor/<id>`, loading it into the editor), **Delete** a plan, start a **New plan**, or **Refresh** the list. To return here from the editor, use the **Plans** button in the top bar. Empty and error states are shown when there are no plans or the API is unreachable.
 
 ---
 

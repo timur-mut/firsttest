@@ -43,7 +43,7 @@ There are ~200 frontend tests (Vitest + Testing Library, jsdom). Each feature sh
 
 ```
 client/src/
-  app/                  appStore (editor↔plans nav), PlansView
+  app/                  router (TanStack Router routes), PlansView
   planner/
     contract/           types · geometry · snapping · catalogTypes · toolTypes · ids
     store/              index · history · helpers · slices/*
