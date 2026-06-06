@@ -5,6 +5,7 @@
 // setAreaColor). Walls have no prop setter, so they show read-only info.
 
 import { useMemo } from 'react';
+import { PanelRightClose } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { usePlannerStore } from '../store';
@@ -70,7 +71,7 @@ function TextCommitInput({
   );
 }
 
-export function PropertiesPanel() {
+export function PropertiesPanel({ onClose }: { onClose?: () => void } = {}) {
   const selected = usePlannerStore((s) => s.selected);
   const layer = usePlannerStore((s) => getSelectedLayer(s.scene));
   const store = usePlannerStore;
@@ -100,7 +101,20 @@ export function PropertiesPanel() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="border-b px-3 py-2 text-sm font-medium">Properties</div>
+      <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+        <span className="text-sm font-medium">Properties</span>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Collapse properties panel"
+            title="Collapse properties"
+            className="-mr-1 rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <PanelRightClose className="size-4" />
+          </button>
+        )}
+      </div>
 
       {count === 0 ? (
         <div className="flex flex-1 items-center justify-center p-4 text-center text-xs text-muted-foreground">

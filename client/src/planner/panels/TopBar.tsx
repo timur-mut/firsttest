@@ -4,8 +4,10 @@
 // the theme switcher. The File-action API and store action signatures are frozen.
 
 import { useEffect, useRef, useState } from 'react';
-import { Cloud, FolderOpen, Minus, Plus } from 'lucide-react';
+import { Cloud, FolderOpen, Minus, PanelLeft, PanelRight, Plus } from 'lucide-react';
 import { usePlannerStore } from '../store';
+import { usePanelStore } from './panelStore';
+import { cn } from '@/lib/utils';
 import { clamp, ZOOM_MAX, ZOOM_MIN } from '../config';
 import { exportToFile, importFromFile, loadFromLocal, saveToLocal } from '../persistence/storage';
 import { savePlanToServer, updatePlanOnServer } from '../persistence/api';
@@ -21,6 +23,11 @@ export function TopBar() {
   const setZoom = usePlannerStore((s) => s.setZoom);
   const renameProject = usePlannerStore((s) => s.renameProject);
   const resetScene = usePlannerStore((s) => s.resetScene);
+
+  const catalogOpen = usePanelStore((s) => s.catalogOpen);
+  const propertiesOpen = usePanelStore((s) => s.propertiesOpen);
+  const toggleCatalog = usePanelStore((s) => s.toggleCatalog);
+  const toggleProperties = usePanelStore((s) => s.toggleProperties);
 
   const fileInput = useRef<HTMLInputElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
@@ -131,60 +138,78 @@ export function TopBar() {
   }
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-card px-3">
-      <span className="font-semibold">Planner</span>
+    <header className="flex h-12 shrink-0 items-center gap-1 border-b bg-card px-1.5 sm:px-3">
+      {/* Catalog toggle — anchored left, always visible. */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn('size-8 shrink-0', catalogOpen && 'bg-accent text-accent-foreground')}
+        aria-label="Toggle catalog panel"
+        aria-pressed={catalogOpen}
+        title="Toggle catalog panel"
+        onClick={toggleCatalog}
+      >
+        <PanelLeft className="size-4" />
+      </Button>
 
-      {editing ? (
-        <Input
-          ref={nameInput}
-          aria-label="Project name"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commitName}
-          onKeyDown={onNameKeyDown}
-          className="h-7 w-48 text-sm"
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={startEditing}
-          title="Click to rename project"
-          aria-label={`Project name: ${name}. Click to rename.`}
-          className="max-w-48 truncate rounded px-2 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          {name}
-        </button>
-      )}
+      {/* Scrollable middle: title, name, file/cloud actions. Scrolls on narrow
+          screens so the anchored toggles + zoom stay reachable. */}
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+        <span className="hidden shrink-0 font-semibold md:inline">Planner</span>
 
-      <div className="ml-4 flex items-center gap-1">
-        <Button variant="outline" size="sm" onClick={() => void router.navigate({ to: '/' })}>
-          <FolderOpen className="size-4" /> Plans
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void onCloudSave()}
-          disabled={cloud === 'saving'}
-          title="Save this plan to the database"
-        >
-          <Cloud className="size-4" /> {cloudLabel}
-        </Button>
-        <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
-        <Button variant="ghost" size="sm" onClick={onNew}>New</Button>
-        <Button variant="ghost" size="sm" onClick={onSave}>Save</Button>
-        <Button variant="ghost" size="sm" onClick={onOpen}>Open</Button>
-        <Button variant="ghost" size="sm" onClick={onExport}>Export</Button>
-        <Button variant="ghost" size="sm" onClick={() => fileInput.current?.click()}>Import</Button>
-        <input
-          ref={fileInput}
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          onChange={onImportFile}
-        />
+        {editing ? (
+          <Input
+            ref={nameInput}
+            aria-label="Project name"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={onNameKeyDown}
+            className="h-7 w-40 shrink-0 text-sm sm:w-48"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={startEditing}
+            title="Click to rename project"
+            aria-label={`Project name: ${name}. Click to rename.`}
+            className="max-w-32 shrink-0 truncate rounded px-2 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground sm:max-w-48"
+          >
+            {name}
+          </button>
+        )}
+
+        <div className="flex shrink-0 items-center gap-1 sm:ml-2">
+          <Button variant="outline" size="sm" onClick={() => void router.navigate({ to: '/' })}>
+            <FolderOpen className="size-4" /> <span className="hidden sm:inline">Plans</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void onCloudSave()}
+            disabled={cloud === 'saving'}
+            title="Save this plan to the database"
+          >
+            <Cloud className="size-4" /> <span className="hidden sm:inline">{cloudLabel}</span>
+          </Button>
+          <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+          <Button variant="ghost" size="sm" onClick={onNew}>New</Button>
+          <Button variant="ghost" size="sm" onClick={onSave}>Save</Button>
+          <Button variant="ghost" size="sm" onClick={onOpen}>Open</Button>
+          <Button variant="ghost" size="sm" onClick={onExport}>Export</Button>
+          <Button variant="ghost" size="sm" onClick={() => fileInput.current?.click()}>Import</Button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={onImportFile}
+          />
+        </div>
       </div>
 
-      <div className="ml-auto flex items-center gap-1">
+      {/* Right cluster — anchored, always visible: zoom, theme, properties toggle. */}
+      <div className="flex shrink-0 items-center gap-1">
         <Button
           variant="outline"
           size="icon"
@@ -215,9 +240,21 @@ export function TopBar() {
         >
           <Plus />
         </Button>
-        <div className="ml-1">
+        {/* System theme still applies on mobile, so hide the switcher there. */}
+        <div className="ml-1 hidden sm:block">
           <ThemeSwitcher />
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn('size-8', propertiesOpen && 'bg-accent text-accent-foreground')}
+          aria-label="Toggle properties panel"
+          aria-pressed={propertiesOpen}
+          title="Toggle properties panel"
+          onClick={toggleProperties}
+        >
+          <PanelRight className="size-4" />
+        </Button>
       </div>
     </header>
   );

@@ -4,8 +4,9 @@
 // reads it on drop and places an Item.
 
 import { useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { PanelLeftClose, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePanelStore } from '@/planner/panels/panelStore';
 import { Input } from '@/components/ui/input';
 import {
   ITEM_DRAG_MIME,
@@ -63,6 +64,8 @@ function CatalogTile({ proto }: { proto: ItemPrototype }) {
 
 export function CatalogSidebar() {
   const [query, setQuery] = useState('');
+  const open = usePanelStore((s) => s.catalogOpen);
+  const setCatalog = usePanelStore((s) => s.setCatalog);
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -73,10 +76,31 @@ export function CatalogSidebar() {
   }, [query]);
 
   return (
-    <aside className="flex w-56 flex-col border-r bg-card">
-      <div className="border-b px-3 py-2 text-sm font-medium">Catalog</div>
+    <aside
+      className={cn(
+        // Mobile: a slide-in drawer over the canvas.
+        'absolute inset-y-0 left-0 z-30 flex w-64 flex-col overflow-hidden border-r bg-card shadow-xl transition-transform duration-200',
+        open ? 'visible translate-x-0' : 'invisible -translate-x-full',
+        // Desktop: docked column that collapses by width.
+        'md:static md:z-auto md:shadow-none md:transition-[width] md:duration-200',
+        open ? 'md:w-64' : 'md:w-0 md:border-r-0',
+      )}
+    >
+      <div className="flex h-full w-64 shrink-0 flex-col">
+        <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+          <span className="text-sm font-medium">Catalog</span>
+          <button
+            type="button"
+            onClick={() => setCatalog(false)}
+            aria-label="Collapse catalog panel"
+            title="Collapse catalog"
+            className="-mr-1 rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <PanelLeftClose className="size-4" />
+          </button>
+        </div>
 
-      <div className="border-b p-2">
+        <div className="border-b p-2">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -111,6 +135,7 @@ export function CatalogSidebar() {
             ))}
           </div>
         )}
+        </div>
       </div>
     </aside>
   );
