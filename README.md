@@ -17,6 +17,7 @@ A Planner5D-like **2D floor planner** (inspired by [cvdlab/react-planner](https:
 - **[Architecture](docs/architecture.md)** — the scene model, store, render layers, tools, wall‑thickness geometry, and backend.
 - **[Development](docs/development.md)** — run, build, test, deploy; project layout; how to extend it.
 - **[API reference](docs/api.md)** — the REST endpoints (`/api/plans`, `/api/todos`).
+- **[Floor-plan import prompt](docs/floorplan-import-prompt.md)** — a vision-model prompt that turns a floor-plan image into importable scene JSON.
 
 ## Quick start
 
