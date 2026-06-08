@@ -11,6 +11,7 @@ import * as api from '@/planner/persistence/api';
 import { createMemoryHistory } from '@tanstack/react-router';
 import { createAppRouter } from './router';
 import { usePlannerStore } from '@/planner/store';
+import { useReferenceImageStore } from '@/planner/store/referenceImageStore';
 import { makeSampleScene } from '@/planner/__fixtures__/sampleScene';
 
 const loadPlan = api.loadPlanFromServer as unknown as ReturnType<typeof vi.fn>;
@@ -22,6 +23,7 @@ function routerAt(path: string) {
 beforeEach(() => {
   loadPlan.mockReset();
   usePlannerStore.getState().resetScene();
+  useReferenceImageStore.getState().clear();
 });
 
 describe('app router', () => {
@@ -33,13 +35,34 @@ describe('app router', () => {
   });
 
   it('loads the plan for "/editor/$planId" via the route loader', async () => {
-    loadPlan.mockResolvedValue(makeSampleScene());
+    loadPlan.mockResolvedValue({ scene: makeSampleScene(), referenceImage: null });
     const router = routerAt('/editor/1');
     await router.load();
 
     expect(loadPlan).toHaveBeenCalledWith(1);
     expect(usePlannerStore.getState().scene.name).toBe('Sample Plan');
     expect(router.state.location.pathname).toBe('/editor/1');
+  });
+
+  it('hydrates the reference image from the loaded plan', async () => {
+    loadPlan.mockResolvedValue({
+      scene: makeSampleScene(),
+      referenceImage: {
+        src: 'data:image/png;base64,AAA',
+        naturalWidth: 800,
+        naturalHeight: 600,
+        x: 5,
+        y: 6,
+        scale: 1,
+        rotation: 0,
+        opacity: 0.5,
+        visible: true,
+        locked: false,
+      },
+    });
+    await routerAt('/editor/2').load();
+    expect(useReferenceImageStore.getState().src).toBe('data:image/png;base64,AAA');
+    expect(useReferenceImageStore.getState().x).toBe(5);
   });
 
   it('does not load a plan for the new-editor route "/editor"', async () => {

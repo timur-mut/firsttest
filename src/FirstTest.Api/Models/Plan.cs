@@ -9,6 +9,8 @@ public record Plan
     public int Id { get; init; }
     public string Name { get; init; } = string.Empty;
     public string Scene { get; init; } = "{}";
+    /// <summary>Optional reference-image underlay (client JSON), stored as jsonb. Null when none.</summary>
+    public string? ReferenceImage { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
 }
@@ -22,6 +24,6 @@ public record PlanSummary
     public DateTimeOffset UpdatedAt { get; init; }
 }
 
-public record CreatePlanRequest(string Name, string Scene);
+public record CreatePlanRequest(string Name, string Scene, string? ReferenceImage = null);
 
-public record UpdatePlanRequest(string Name, string Scene);
+public record UpdatePlanRequest(string Name, string Scene, string? ReferenceImage = null);

@@ -101,7 +101,11 @@ This is the “thickness‑aware” model: outer‑corner vertices, inward miter
 
 - **`serialize.ts`** — `serializeScene` / `deserializeScene`: a versioned envelope `{ version, scene }` with validation and a migration seam; derived `areas` are stripped on save and re‑added on load.
 - **`storage.ts`** — localStorage save/load, debounced autosave, and file export/import.
-- **`api.ts`** — the DB client: `listPlans`, `loadPlanFromServer`, `savePlanToServer`, `updatePlanOnServer`, `deletePlanFromServer`. Base URL is `import.meta.env.VITE_API_URL ?? ''` (empty in dev → Vite proxy; the API origin in prod). The scene travels as the serialized envelope, stored server‑side as `jsonb`.
+- **`api.ts`** — the DB client: `listPlans`, `loadPlanFromServer`, `savePlanToServer`, `updatePlanOnServer`, `deletePlanFromServer`. Base URL is `import.meta.env.VITE_API_URL ?? ''` (empty in dev → Vite proxy; the API origin in prod). The scene travels as the serialized envelope, stored server‑side as `jsonb`. Save/update also carry the optional **reference image** (a JSON string, sibling of the scene); `loadPlanFromServer` returns `{ scene, referenceImage }`.
+
+### Reference-image underlay
+
+A user-uploaded floor-plan image can be shown behind the geometry for manual tracing. It lives in a standalone `useReferenceImageStore` (`planner/store/referenceImageStore.ts`, kept out of `scene`/undo), is drawn by `ReferenceImageLayer` (mounted first/backmost in `SceneRenderer`, in world coordinates, with self-contained drag-to-move when unlocked), and is controlled by `ReferenceImagePanel` in the right sidebar (upload, opacity, scale/rotation/position, lock, hide, remove). It is **persisted with the plan** in a nullable `reference_image` jsonb column (not the frozen scene contract): hydrated by the editor route loader and sent on Cloud Save.
 
 ## Routing (`client/src/app/router.tsx`)
 
@@ -133,7 +137,7 @@ Data/                 IDbConnectionFactory + Npgsql factory; *Repository (Dapper
 Migrations/           DatabaseMigrator (DbUp) + Scripts/*.sql (embedded, ordered)
 ```
 
-- **Plans** are stored in a `plans` table (`id`, `name`, `scene jsonb`, `created_at`, `updated_at`); the scene is written/read as JSON text cast to/from `jsonb`.
+- **Plans** are stored in a `plans` table (`id`, `name`, `scene jsonb`, `reference_image jsonb` (nullable), `created_at`, `updated_at`); the scene and reference image are written/read as JSON text cast to/from `jsonb`.
 - **Todos** are the original starter feature (kanban) and remain in place.
 
 See **[api.md](api.md)** for the endpoints and the data flow.

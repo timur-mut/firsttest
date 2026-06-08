@@ -43,6 +43,29 @@ describe('plans API client', () => {
 
     expect(summary).toMatchObject({ id: 7, name: 'My' });
     expect('scene' in summary).toBe(false);
+    // No reference image passed → referenceImage is null in the body.
+    expect(body).toHaveProperty('referenceImage', null);
+  });
+
+  it('savePlanToServer sends the reference image as a JSON string', async () => {
+    fetchMock.mockResolvedValue(res({ id: 8, name: 'My', scene: '{}', createdAt: 'a', updatedAt: 'b' }, true, 201));
+    const refImage = {
+      src: 'data:image/png;base64,AAA',
+      naturalWidth: 800,
+      naturalHeight: 600,
+      x: 10,
+      y: 20,
+      scale: 1,
+      rotation: 0,
+      opacity: 0.5,
+      visible: true,
+      locked: false,
+    };
+    await savePlanToServer('My', makeSampleScene(), refImage);
+    const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as { referenceImage: string };
+    expect(typeof body.referenceImage).toBe('string');
+    expect(JSON.parse(body.referenceImage)).toMatchObject({ src: 'data:image/png;base64,AAA', x: 10 });
   });
 
   it('updatePlanOnServer PUTs /api/plans/{id}', async () => {
@@ -53,13 +76,24 @@ describe('plans API client', () => {
     expect(opts.method).toBe('PUT');
   });
 
-  it('loadPlanFromServer parses + validates the scene envelope', async () => {
+  it('loadPlanFromServer parses the scene envelope and a null reference image', async () => {
     const envelope = JSON.stringify({ version: 1, scene: makeSampleScene() });
     fetchMock.mockResolvedValue(res({ id: 3, name: 'X', scene: envelope, createdAt: 'a', updatedAt: 'b' }));
-    const scene = await loadPlanFromServer(3);
+    const { scene, referenceImage } = await loadPlanFromServer(3);
     expect(fetchMock).toHaveBeenCalledWith('/api/plans/3');
     expect(scene.name).toBe('Sample Plan');
     expect(Object.keys(scene.layers)).toHaveLength(1);
+    expect(referenceImage).toBeNull();
+  });
+
+  it('loadPlanFromServer parses the reference image JSON string', async () => {
+    const envelope = JSON.stringify({ version: 1, scene: makeSampleScene() });
+    const refImage = JSON.stringify({ src: 'data:image/png;base64,AAA', naturalWidth: 800, naturalHeight: 600, x: 5, y: 6, scale: 1, rotation: 0, opacity: 0.5, visible: true, locked: false });
+    fetchMock.mockResolvedValue(
+      res({ id: 3, name: 'X', scene: envelope, referenceImage: refImage, createdAt: 'a', updatedAt: 'b' }),
+    );
+    const { referenceImage } = await loadPlanFromServer(3);
+    expect(referenceImage).toMatchObject({ src: 'data:image/png;base64,AAA', x: 5, naturalWidth: 800 });
   });
 
   it('deletePlanFromServer DELETEs and tolerates a 404', async () => {
