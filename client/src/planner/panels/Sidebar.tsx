@@ -4,6 +4,7 @@
 
 import { cn } from '@/lib/utils';
 import { PropertiesPanel } from './PropertiesPanel';
+import { ReferenceImagePanel } from './ReferenceImagePanel';
 import { usePanelStore } from './panelStore';
 
 export function Sidebar() {
@@ -22,7 +23,10 @@ export function Sidebar() {
       )}
     >
       <div className="flex h-full w-72 shrink-0 flex-col">
-        <PropertiesPanel onClose={() => setProperties(false)} />
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <PropertiesPanel onClose={() => setProperties(false)} />
+        </div>
+        <ReferenceImagePanel />
       </div>
     </aside>
   );

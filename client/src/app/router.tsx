@@ -20,6 +20,7 @@ import {
 import { PlansView } from './PlansView';
 import { PlannerApp } from '@/planner/PlannerApp';
 import { usePlannerStore } from '@/planner/store';
+import { useReferenceImageStore } from '@/planner/store/referenceImageStore';
 import { loadPlanFromServer } from '@/planner/persistence/api';
 import { Button } from '@/components/ui/button';
 
@@ -68,8 +69,9 @@ export function createAppRouter(history?: RouterHistory) {
     loader: async ({ params }) => {
       const id = Number(params.planId);
       if (!Number.isFinite(id)) throw new Error(`Invalid plan id: ${params.planId}`);
-      const scene = await loadPlanFromServer(id);
+      const { scene, referenceImage } = await loadPlanFromServer(id);
       usePlannerStore.getState().setScene(scene);
+      useReferenceImageStore.getState().hydrate(referenceImage);
       return { id };
     },
     component: PlannerApp,

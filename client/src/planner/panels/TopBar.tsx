@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { clamp, ZOOM_MAX, ZOOM_MIN } from '../config';
 import { exportToFile, importFromFile, loadFromLocal, saveToLocal } from '../persistence/storage';
 import { savePlanToServer, updatePlanOnServer } from '../persistence/api';
+import { referenceImageSnapshot, useReferenceImageStore } from '../store/referenceImageStore';
 import { getCurrentPlanId, router } from '@/app/router';
 import { ThemeSwitcher } from '@/components/theme-switcher';
 import { Button } from '@/components/ui/button';
@@ -80,6 +81,7 @@ export function TopBar() {
     const ok = window.confirm('Start a new blank project? Unsaved changes will be lost.');
     if (ok) {
       resetScene();
+      useReferenceImageStore.getState().clear();
       // Drop any bound plan id from the URL so the next Cloud Save creates a new
       // plan instead of overwriting the one we were editing.
       void router.navigate({ to: '/editor' });
@@ -93,12 +95,13 @@ export function TopBar() {
   // Save to the database: update the bound plan, or create a new one.
   async function onCloudSave() {
     const scene = usePlannerStore.getState().scene;
+    const refImage = referenceImageSnapshot();
     const currentId = getCurrentPlanId();
     setCloud('saving');
     try {
       const saved = currentId
-        ? await updatePlanOnServer(currentId, scene.name, scene)
-        : await savePlanToServer(scene.name, scene);
+        ? await updatePlanOnServer(currentId, scene.name, scene, refImage)
+        : await savePlanToServer(scene.name, scene, refImage);
       // Reflect the (possibly new) plan id in the URL so a reload reopens it.
       if (saved.id !== currentId) {
         void router.navigate({ to: '/editor/$planId', params: { planId: String(saved.id) } });

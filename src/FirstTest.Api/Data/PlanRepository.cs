@@ -24,7 +24,8 @@ public sealed class PlanRepository : IPlanRepository
     {
         using var conn = _factory.CreateConnection();
         const string sql = """
-            SELECT id, name, scene::text AS Scene, created_at AS CreatedAt, updated_at AS UpdatedAt
+            SELECT id, name, scene::text AS Scene, reference_image::text AS ReferenceImage,
+                   created_at AS CreatedAt, updated_at AS UpdatedAt
             FROM plans
             WHERE id = @id;
             """;
@@ -34,13 +35,15 @@ public sealed class PlanRepository : IPlanRepository
     public async Task<Plan> CreateAsync(CreatePlanRequest request)
     {
         using var conn = _factory.CreateConnection();
-        // The scene arrives as JSON text; cast it to jsonb for storage.
+        // Scene + reference image arrive as JSON text; cast to jsonb for storage
+        // (a null reference image stays NULL).
         const string sql = """
-            INSERT INTO plans (name, scene)
-            VALUES (@Name, @Scene::jsonb)
-            RETURNING id, name, scene::text AS Scene, created_at AS CreatedAt, updated_at AS UpdatedAt;
+            INSERT INTO plans (name, scene, reference_image)
+            VALUES (@Name, @Scene::jsonb, @ReferenceImage::jsonb)
+            RETURNING id, name, scene::text AS Scene, reference_image::text AS ReferenceImage,
+                      created_at AS CreatedAt, updated_at AS UpdatedAt;
             """;
-        return await conn.QuerySingleAsync<Plan>(sql, new { request.Name, request.Scene });
+        return await conn.QuerySingleAsync<Plan>(sql, new { request.Name, request.Scene, request.ReferenceImage });
     }
 
     public async Task<Plan?> UpdateAsync(int id, UpdatePlanRequest request)
@@ -48,11 +51,12 @@ public sealed class PlanRepository : IPlanRepository
         using var conn = _factory.CreateConnection();
         const string sql = """
             UPDATE plans
-            SET name = @Name, scene = @Scene::jsonb, updated_at = NOW()
+            SET name = @Name, scene = @Scene::jsonb, reference_image = @ReferenceImage::jsonb, updated_at = NOW()
             WHERE id = @id
-            RETURNING id, name, scene::text AS Scene, created_at AS CreatedAt, updated_at AS UpdatedAt;
+            RETURNING id, name, scene::text AS Scene, reference_image::text AS ReferenceImage,
+                      created_at AS CreatedAt, updated_at AS UpdatedAt;
             """;
-        return await conn.QuerySingleOrDefaultAsync<Plan>(sql, new { id, request.Name, request.Scene });
+        return await conn.QuerySingleOrDefaultAsync<Plan>(sql, new { id, request.Name, request.Scene, request.ReferenceImage });
     }
 
     public async Task<bool> DeleteAsync(int id)

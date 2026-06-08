@@ -8,7 +8,7 @@ CORS allows the configured client origins (`Cors:AllowedOrigins`).
 
 ## Plans — `/api/plans`
 
-A plan is a saved floor plan. The **scene** is the client’s serialized envelope (`{ version, scene }`) stored as `jsonb` and returned as a JSON **string**.
+A plan is a saved floor plan. The **scene** is the client’s serialized envelope (`{ version, scene }`) stored as `jsonb` and returned as a JSON **string**. A plan may also carry an optional **`referenceImage`** — the original floor-plan image used as a tracing underlay (a JSON **string**: dataURL + transform), stored as a sibling `jsonb` column. It is `null` when absent and **omitted** from the list endpoint to keep it light.
 
 | Method | Path | Body | Success | Notes |
 |--------|------|------|---------|-------|
@@ -24,13 +24,14 @@ A plan is a saved floor plan. The **scene** is the client’s serialized envelop
 // PlanSummary
 { "id": 1, "name": "My Plan", "createdAt": "2026-…Z", "updatedAt": "2026-…Z" }
 
-// Plan (adds the scene as a JSON string)
+// Plan (adds the scene + optional reference image, both JSON strings)
 { "id": 1, "name": "My Plan",
   "scene": "{\"version\":1,\"scene\":{ …Scene… }}",
+  "referenceImage": "{\"src\":\"data:image/png;base64,…\",\"x\":0,\"y\":0,\"scale\":1, …}",
   "createdAt": "2026-…Z", "updatedAt": "2026-…Z" }
 
-// CreatePlanRequest / UpdatePlanRequest
-{ "name": "My Plan", "scene": "{\"version\":1,\"scene\":{ …Scene… }}" }
+// CreatePlanRequest / UpdatePlanRequest (referenceImage optional, null when none)
+{ "name": "My Plan", "scene": "{\"version\":1,\"scene\":{ …Scene… }}", "referenceImage": null }
 ```
 
 The client sends `scene` as `serializeScene(scene)` and parses the returned `scene` with `deserializeScene` (validation + migration). See `client/src/planner/persistence/api.ts` and `serialize.ts`.
@@ -73,8 +74,8 @@ The original starter (kanban) feature, still available.
 PostgreSQL, applied by DbUp migrations on API startup (`Migrations/Scripts/*.sql`):
 
 ```sql
--- plans (0005_create_plans.sql)
-id SERIAL PK · name TEXT · scene JSONB · created_at TIMESTAMPTZ · updated_at TIMESTAMPTZ
+-- plans (0005_create_plans.sql; reference_image added in 0006)
+id SERIAL PK · name TEXT · scene JSONB · reference_image JSONB NULL · created_at TIMESTAMPTZ · updated_at TIMESTAMPTZ
 
 -- todos (0001–0004)
 id SERIAL PK · title TEXT · status TEXT CHECK(todo|active|done) · position INT · created_at TIMESTAMPTZ

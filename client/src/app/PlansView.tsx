@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { FileText, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { router } from './router';
 import { usePlannerStore } from '@/planner/store';
+import { useReferenceImageStore } from '@/planner/store/referenceImageStore';
 import { deletePlanFromServer, listPlans, type PlanSummary } from '@/planner/persistence/api';
 import { Button } from '@/components/ui/button';
 
@@ -44,6 +45,7 @@ export function PlansView() {
 
   function newPlan() {
     usePlannerStore.getState().resetScene();
+    useReferenceImageStore.getState().clear();
     void router.navigate({ to: '/editor' });
   }
 
