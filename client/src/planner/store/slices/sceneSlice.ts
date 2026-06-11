@@ -3,6 +3,19 @@
 import type { Mode, Scene, SnapMask } from '../../contract/types';
 import type { SliceCreator } from '../storeTypes';
 import { applyDerived, emptySelection, getSelectedLayer, makeEmptyScene } from '../helpers';
+import { adoptIds } from '../../contract/ids';
+
+/** Every entity id a scene carries — used to keep the id counter ahead of them. */
+function* sceneIds(scene: Scene): Generator<string> {
+  for (const layer of Object.values(scene.layers)) {
+    yield layer.id;
+    yield* Object.keys(layer.vertices);
+    yield* Object.keys(layer.lines);
+    yield* Object.keys(layer.holes);
+    yield* Object.keys(layer.items);
+    yield* Object.keys(layer.areas);
+  }
+}
 
 export interface SceneSlice {
   /** Switch interaction mode (toolbar / tools). */
@@ -29,13 +42,18 @@ export const createSceneSlice: SliceCreator<SceneSlice> = (mutate) => ({
 
   setScene: (scene) =>
     mutate((d) => {
+      // Keep the id counter ahead of the loaded scene's ids so newly drawn
+      // entities can never re-issue an existing id and overwrite it.
+      adoptIds(sceneIds(scene));
       d.scene = scene;
       d.selected = emptySelection();
     }),
 
   resetScene: () =>
     mutate((d) => {
-      d.scene = makeEmptyScene();
+      const scene = makeEmptyScene();
+      adoptIds(sceneIds(scene));
+      d.scene = scene;
       d.selected = emptySelection();
       d.mode = 'idle';
     }),
