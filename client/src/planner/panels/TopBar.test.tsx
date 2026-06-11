@@ -1,17 +1,26 @@
 // Unit 11 — TopBar tests. Cover the project-name editing flow, the File
-// Save→Open round-trip via localStorage, the New action, and zoom controls.
+// actions (Save downloads a JSON file, Open loads one), the New action, and
+// zoom controls.
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TopBar } from './TopBar';
 import { usePlannerStore } from '../store';
 import { makeSampleScene } from '../__fixtures__/sampleScene';
+import { exportToFile, importFromFile } from '../persistence/storage';
+
+// Save/Open are file-based; stub the file I/O so we can assert the wiring
+// without touching the real download / FileReader machinery.
+vi.mock('../persistence/storage', () => ({
+  exportToFile: vi.fn(),
+  importFromFile: vi.fn(),
+}));
 
 beforeEach(() => {
   usePlannerStore.getState().setScene(makeSampleScene());
   usePlannerStore.getState().clearHistory();
-  localStorage.clear();
+  vi.clearAllMocks();
 });
 
 describe('TopBar', () => {
@@ -46,20 +55,31 @@ describe('TopBar', () => {
     expect(usePlannerStore.getState().scene.name).toBe('Sample Plan');
   });
 
-  it('round-trips through localStorage via Save then Open', async () => {
+  it('Save downloads the current scene as a JSON file', async () => {
     const user = userEvent.setup();
     render(<TopBar />);
 
-    // Save the current (sample) scene.
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    // Mutate after saving.
-    usePlannerStore.getState().renameProject('Mutated');
-    expect(usePlannerStore.getState().scene.name).toBe('Mutated');
+    expect(exportToFile).toHaveBeenCalledTimes(1);
+    expect((exportToFile as Mock).mock.calls[0][0].name).toBe('Sample Plan');
+  });
 
-    // Open restores the saved snapshot.
-    await user.click(screen.getByRole('button', { name: 'Open' }));
-    expect(usePlannerStore.getState().scene.name).toBe('Sample Plan');
+  it('Open loads a scene from the chosen JSON file', async () => {
+    const imported = makeSampleScene();
+    imported.name = 'Imported';
+    (importFromFile as Mock).mockResolvedValue(imported);
+
+    const user = userEvent.setup();
+    const { container } = render(<TopBar />);
+
+    // Open triggers the hidden file input; simulate the user picking a file.
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['{}'], 'plan.json', { type: 'application/json' });
+    await user.upload(input, file);
+
+    expect(importFromFile).toHaveBeenCalledWith(file);
+    await waitFor(() => expect(usePlannerStore.getState().scene.name).toBe('Imported'));
   });
 
   it('starts a blank project when New is confirmed', async () => {
