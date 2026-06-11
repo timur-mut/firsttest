@@ -12,6 +12,13 @@ const DEFAULT_THICKNESS = 20;
 const DEFAULT_HEIGHT = 280;
 /** Coincidence tolerance (world units) for merging onto an existing vertex. */
 const MERGE_TOLERANCE = 1e-6;
+/**
+ * Max distance (world units) for treating a placed point as lying ON an existing
+ * wall, so that wall is split and the new wall joins it at a T-junction. Points
+ * produced by line-snapping already lie exactly on the wall; this tolerance only
+ * absorbs floating-point error.
+ */
+const ON_WALL_TOLERANCE = 1e-3;
 
 /** In-progress wall chain while drawing. */
 export interface WallDraft {
@@ -71,9 +78,78 @@ function createVertex(layer: Layer, x: number, y: number): string {
   return id;
 }
 
-/** Ensure a vertex exists at (x,y): reuse a coincident one or create a new one. */
+/**
+ * Ensure a *connectable* vertex exists at (x,y):
+ *   1. reuse a coincident existing vertex (merge), else
+ *   2. if the point lands on an existing wall, split that wall so the new wall
+ *      joins it at a T-junction — instead of floating past as a disconnected
+ *      stub that overshoots the wall and leaves the room open, else
+ *   3. create a fresh free vertex (a non-closing wall ending in open space).
+ */
 function ensureVertex(layer: Layer, x: number, y: number): string {
-  return findVertexAt(layer, x, y)?.id ?? createVertex(layer, x, y);
+  const coincident = findVertexAt(layer, x, y);
+  if (coincident) return coincident.id;
+  const onWall = findLineAt(layer, x, y);
+  if (onWall) return splitLineAtPoint(layer, onWall.lineId, onWall.point, onWall.t);
+  return createVertex(layer, x, y);
+}
+
+/**
+ * Find an existing wall whose INTERIOR the point lies on (within tolerance),
+ * nearest first. Endpoint-adjacent hits are excluded (those are handled by
+ * vertex merging), so this only ever reports a genuine mid-wall T-junction.
+ */
+function findLineAt(
+  layer: Layer,
+  x: number,
+  y: number,
+): { lineId: string; point: Point; t: number } | null {
+  let best: { lineId: string; point: Point; t: number; dist: number } | null = null;
+  for (const line of Object.values(layer.lines)) {
+    const a = layer.vertices[line.vertices[0]];
+    const b = layer.vertices[line.vertices[1]];
+    if (!a || !b) continue;
+    const { point, t, distance } = projectPointOnSegment({ x, y }, a, b);
+    if (distance <= ON_WALL_TOLERANCE && t > 1e-4 && t < 1 - 1e-4 && (!best || distance < best.dist)) {
+      best = { lineId: line.id, point, t, dist: distance };
+    }
+  }
+  return best ? { lineId: best.lineId, point: best.point, t: best.t } : null;
+}
+
+/**
+ * Split wall `lineId` at an interior point (fraction `t` along it), replacing it
+ * with two walls that share a new vertex. Thickness/height are preserved and any
+ * holes are redistributed onto the half they fall in (offset rescaled). Returns
+ * the new shared vertex id. Does NOT recompute derived data — callers do.
+ */
+function splitLineAtPoint(layer: Layer, lineId: string, point: Point, t: number): string {
+  const line = layer.lines[lineId];
+  const [aId, bId] = line.vertices;
+  const vId = createVertex(layer, point.x, point.y);
+  const l1 = createLineLike(layer, aId, vId, line); // a -> v  (covers [0, t])
+  const l2 = createLineLike(layer, vId, bId, line); // v -> b  (covers [t, 1])
+
+  // Redistribute holes onto the half they fall in, rescaling the offset.
+  for (const holeId of line.holes) {
+    const hole = layer.holes[holeId];
+    if (!hole) continue;
+    if (hole.offset < t) {
+      hole.lineId = l1;
+      hole.offset = clamp01(hole.offset / t);
+      layer.lines[l1].holes.push(holeId);
+    } else {
+      hole.lineId = l2;
+      hole.offset = clamp01((hole.offset - t) / (1 - t));
+      layer.lines[l2].holes.push(holeId);
+    }
+  }
+
+  // Detach + delete the original wall.
+  layer.vertices[aId].lines = layer.vertices[aId].lines.filter((id) => id !== lineId);
+  layer.vertices[bId].lines = layer.vertices[bId].lines.filter((id) => id !== lineId);
+  delete layer.lines[lineId];
+  return vId;
 }
 
 /**
@@ -88,8 +164,23 @@ function pruneDraftOrphans(layer: Layer, vertexIds: string[]): void {
   }
 }
 
-/** Add a wall line between two existing vertices, wiring back-references. */
+/** The wall directly connecting two vertices, if one already exists. */
+function lineBetween(layer: Layer, aId: string, bId: string): string | undefined {
+  for (const line of Object.values(layer.lines)) {
+    const [x, y] = line.vertices;
+    if ((x === aId && y === bId) || (x === bId && y === aId)) return line.id;
+  }
+  return undefined;
+}
+
+/**
+ * Add a wall line between two existing vertices, wiring back-references.
+ * Idempotent: if a wall already connects them (e.g. a split just created it when
+ * drawing collinear along a wall), reuse it instead of stacking a duplicate.
+ */
 function createLine(layer: Layer, aId: string, bId: string): string {
+  const existing = lineBetween(layer, aId, bId);
+  if (existing) return existing;
   const id = genId('line');
   const line: Line = {
     id,
@@ -232,33 +323,8 @@ export const createWallSlice: SliceCreator<WallSlice> = (mutate) => ({
       // Refuse a degenerate split at (or extremely near) an endpoint.
       if (t <= 1e-4 || t >= 1 - 1e-4) return;
 
-      // New corner sits on the wall; the two halves inherit thickness/height.
-      const vId = createVertex(layer, point.x, point.y);
-      const l1 = createLineLike(layer, aId, vId, line); // a -> v  (covers [0, t])
-      const l2 = createLineLike(layer, vId, bId, line); // v -> b  (covers [t, 1])
-
-      // Redistribute holes onto the half they fall in, rescaling the offset.
-      for (const holeId of line.holes) {
-        const hole = layer.holes[holeId];
-        if (!hole) continue;
-        if (hole.offset < t) {
-          hole.lineId = l1;
-          hole.offset = clamp01(hole.offset / t);
-          layer.lines[l1].holes.push(holeId);
-        } else {
-          hole.lineId = l2;
-          hole.offset = clamp01((hole.offset - t) / (1 - t));
-          layer.lines[l2].holes.push(holeId);
-        }
-      }
-
-      // Detach + delete the original wall.
-      a.lines = a.lines.filter((id) => id !== lineId);
-      b.lines = b.lines.filter((id) => id !== lineId);
-      delete layer.lines[lineId];
-
+      newVertexId = splitLineAtPoint(layer, lineId, point, t);
       applyDerived(layer);
-      newVertexId = vId;
     });
     return newVertexId;
   },
