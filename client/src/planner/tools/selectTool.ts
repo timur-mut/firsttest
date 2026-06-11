@@ -67,6 +67,21 @@ interface HoleDrag {
   paused: boolean;
 }
 
+/** Transient drag state for repositioning a room's floor layout. */
+interface FloorDrag {
+  areaId: string;
+  /** Grab point in world units, and the pattern offset at grab time. */
+  startX: number;
+  startY: number;
+  startOffsetX: number;
+  startOffsetY: number;
+  /** Screen-space grab point, to apply a small move threshold. */
+  clientX: number;
+  clientY: number;
+  moved: boolean;
+  paused: boolean;
+}
+
 /**
  * Drag-to-pan on empty canvas (left button). Screen-space; not undoable. A
  * gesture that never crosses the move threshold is treated as a click and
@@ -86,6 +101,7 @@ let vertexDrag: VertexDrag | null = null;
 let rotationDrag: RotationDrag | null = null;
 let resizeDrag: ResizeDrag | null = null;
 let holeDrag: HoleDrag | null = null;
+let floorDrag: FloorDrag | null = null;
 let canvasPan: CanvasPan | null = null;
 
 /** Movement (px) before an empty-canvas drag becomes a pan rather than a click. */
@@ -114,7 +130,8 @@ function endGesture() {
     vertexDrag?.paused ||
     rotationDrag?.paused ||
     resizeDrag?.paused ||
-    holeDrag?.paused;
+    holeDrag?.paused ||
+    floorDrag?.paused;
   if (paused) usePlannerStore.getState().resumeHistory();
   drag = null;
   lineDrag = null;
@@ -122,6 +139,7 @@ function endGesture() {
   rotationDrag = null;
   resizeDrag = null;
   holeDrag = null;
+  floorDrag = null;
   canvasPan = null;
 }
 
@@ -199,6 +217,27 @@ export const selectTool: ToolDescriptor = {
         // Prepare to slide a selected door/window along its wall.
         if (e.targetKind === 'holes') {
           holeDrag = { holeId: e.targetId, paused: false };
+        }
+
+        // Prepare to drag-reposition a room's floor layout. Only rooms that
+        // already have a floor covering are draggable; a plain click still just
+        // selects (the move threshold keeps clicks from nudging the pattern).
+        if (e.targetKind === 'areas') {
+          const layer = store.scene.layers[store.scene.selectedLayer];
+          const flooring = layer.areas[e.targetId]?.flooring;
+          if (flooring) {
+            floorDrag = {
+              areaId: e.targetId,
+              startX: e.x,
+              startY: e.y,
+              startOffsetX: flooring.offsetX ?? 0,
+              startOffsetY: flooring.offsetY ?? 0,
+              clientX: e.originalEvent.clientX,
+              clientY: e.originalEvent.clientY,
+              moved: false,
+              paused: false,
+            };
+          }
         }
         return;
       }
@@ -355,6 +394,36 @@ export const selectTool: ToolDescriptor = {
         return;
       }
 
+      // Reposition a room's floor layout (free movement, no grid snap).
+      if (floorDrag) {
+        if (e.originalEvent.buttons === 0) {
+          endGesture();
+          return;
+        }
+        if (
+          !floorDrag.moved &&
+          Math.hypot(
+            e.originalEvent.clientX - floorDrag.clientX,
+            e.originalEvent.clientY - floorDrag.clientY,
+          ) < PAN_THRESHOLD_PX
+        ) {
+          return; // sub-threshold jitter: keep it a click, not a nudge
+        }
+        floorDrag.moved = true;
+        const store = usePlannerStore.getState();
+        const flooring = store.scene.layers[store.scene.selectedLayer].areas[floorDrag.areaId]
+          ?.flooring;
+        if (!flooring) return;
+        const offsetX = floorDrag.startOffsetX + (e.x - floorDrag.startX);
+        const offsetY = floorDrag.startOffsetY + (e.y - floorDrag.startY);
+        if (!floorDrag.paused) {
+          store.pauseHistory();
+          floorDrag.paused = true;
+        }
+        store.setAreaFlooring(floorDrag.areaId, { ...flooring, offsetX, offsetY });
+        return;
+      }
+
       if (!drag) return;
       if (e.originalEvent.buttons === 0) {
         // Button released outside our up handler — end the gesture cleanly.
@@ -376,7 +445,16 @@ export const selectTool: ToolDescriptor = {
         canvasPan = null;
         return;
       }
-      if (!drag && !lineDrag && !vertexDrag && !rotationDrag && !resizeDrag && !holeDrag) return;
+      if (
+        !drag &&
+        !lineDrag &&
+        !vertexDrag &&
+        !rotationDrag &&
+        !resizeDrag &&
+        !holeDrag &&
+        !floorDrag
+      )
+        return;
       endGesture();
     },
 

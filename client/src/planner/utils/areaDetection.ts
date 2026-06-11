@@ -524,6 +524,7 @@ export function detectAreas(layer: Layer): Record<string, Area> {
       area: room.area,
       color: existing?.color ?? DEFAULT_AREA_COLOR,
       ...(existing?.name !== undefined ? { name: existing.name } : {}),
+      ...(existing?.flooring !== undefined ? { flooring: existing.flooring } : {}),
     };
   }
   return result;

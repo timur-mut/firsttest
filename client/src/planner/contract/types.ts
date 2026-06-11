@@ -92,6 +92,12 @@ export interface Area {
   color: string;
   /** Optional user-given room label (e.g. "Bedroom"). */
   name?: string;
+  /**
+   * Optional floor covering override (additive; older scenes omit it). Like
+   * `name`/`color` it is a user override keyed by the room's deterministic id,
+   * so it survives recomputation as long as the room's corners are unchanged.
+   */
+  flooring?: import('../flooring/types').Flooring;
 }
 
 /** A single design layer. MVP ships exactly one; the map is forward-compat. */

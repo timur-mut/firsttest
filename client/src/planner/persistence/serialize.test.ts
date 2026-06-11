@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeSampleScene } from '@/planner/__fixtures__/sampleScene';
+import { makeFlooring } from '@/planner/flooring/catalog';
 import {
   SCENE_FORMAT_VERSION,
   deserializeScene,
@@ -32,19 +33,31 @@ describe('serializeScene / deserializeScene', () => {
     expect(parsed.version).toBe(SCENE_FORMAT_VERSION);
   });
 
-  it('strips derived areas on serialize but yields a valid empty areas map', () => {
+  it('strips derived room geometry but keeps user overrides (name/color/flooring)', () => {
     const scene = makeSampleScene();
     const layerId = scene.selectedLayer;
-    // Pretend area detection populated rooms.
+    // Pretend area detection populated a room, then the user customised it.
     scene.layers[layerId].areas = {
-      'a-1': { id: 'a-1', vertices: ['v1', 'v2', 'v5', 'v6'], area: 1, color: '#fff' },
+      'a-1': {
+        id: 'a-1',
+        vertices: ['v1', 'v2', 'v5', 'v6'],
+        area: 1,
+        color: '#fff',
+        name: 'Kitchen',
+        flooring: makeFlooring('laminate'),
+      },
     };
 
     const json = serializeScene(scene);
-    expect(json).not.toContain('a-1');
-
     const result = deserializeScene(json);
-    expect(result.layers[layerId].areas).toEqual({});
+    const area = result.layers[layerId].areas['a-1'];
+    // The override survives the round trip...
+    expect(area.color).toBe('#fff');
+    expect(area.name).toBe('Kitchen');
+    expect(area.flooring).toEqual(makeFlooring('laminate'));
+    // ...while the derived room geometry is dropped (recomputed on load).
+    expect(area.vertices).toEqual([]);
+    expect(area.area).toBe(0);
   });
 
   it('accepts a file that has no areas key at all', () => {
