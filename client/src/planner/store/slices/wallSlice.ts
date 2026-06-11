@@ -164,8 +164,23 @@ function pruneDraftOrphans(layer: Layer, vertexIds: string[]): void {
   }
 }
 
-/** Add a wall line between two existing vertices, wiring back-references. */
+/** The wall directly connecting two vertices, if one already exists. */
+function lineBetween(layer: Layer, aId: string, bId: string): string | undefined {
+  for (const line of Object.values(layer.lines)) {
+    const [x, y] = line.vertices;
+    if ((x === aId && y === bId) || (x === bId && y === aId)) return line.id;
+  }
+  return undefined;
+}
+
+/**
+ * Add a wall line between two existing vertices, wiring back-references.
+ * Idempotent: if a wall already connects them (e.g. a split just created it when
+ * drawing collinear along a wall), reuse it instead of stacking a duplicate.
+ */
 function createLine(layer: Layer, aId: string, bId: string): string {
+  const existing = lineBetween(layer, aId, bId);
+  if (existing) return existing;
   const id = genId('line');
   const line: Line = {
     id,
