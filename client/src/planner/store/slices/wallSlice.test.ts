@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { usePlannerStore } from '@/planner/store';
 import { makeSampleScene } from '@/planner/__fixtures__/sampleScene';
+import { detectRoomCycles } from '@/planner/utils/areaDetection';
 
 function store() {
   return usePlannerStore.getState();
@@ -103,6 +104,51 @@ describe('wall drawing chain', () => {
     store().beginWall(1000, 1000);
     store().finishWall();
     expect(Object.keys(layer().vertices).length).toBe(before);
+  });
+});
+
+describe('wall split-and-join (T-junctions)', () => {
+  it('splits the walls a partition lands on and divides the room in two', () => {
+    // The sample scene has two rooms split by l-mid. The left room is bounded by
+    // the top wall (l-top-left, y=100) and bottom wall (l-bottom-left, y=400).
+    expect(detectRoomCycles(layer()).length).toBe(2);
+    const linesBefore = Object.keys(layer().lines).length;
+
+    // Draw a partition straight across the left room, endpoints landing ON the
+    // top and bottom walls (as line-snapping would produce).
+    store().beginWall(300, 100); // on l-top-left
+    store().addWallPoint(300, 400); // on l-bottom-left
+    store().finishWall();
+
+    const l = layer();
+    // Each touched wall is split in two, plus the partition itself: +3 lines.
+    expect(Object.keys(l.lines).length).toBe(linesBefore + 3);
+
+    // A junction vertex now sits on each wall, wired into three walls.
+    const topJoint = Object.values(l.vertices).find((v) => v.x === 300 && v.y === 100);
+    const bottomJoint = Object.values(l.vertices).find((v) => v.x === 300 && v.y === 400);
+    expect(topJoint?.lines.length).toBe(3);
+    expect(bottomJoint?.lines.length).toBe(3);
+
+    // The left room is now divided into two rooms (3 total with the right room).
+    expect(detectRoomCycles(l).length).toBe(3);
+  });
+
+  it('leaves a wall ending in open space as a free, non-closing wall', () => {
+    const linesBefore = Object.keys(layer().lines).length;
+
+    // Both endpoints are far from any existing wall — nothing to split.
+    store().beginWall(1400, 1400);
+    store().addWallPoint(1700, 1400);
+    store().finishWall();
+
+    const l = layer();
+    expect(Object.keys(l.lines).length).toBe(linesBefore + 1);
+    // The free end is a lone, non-closing wall (degree-1 endpoints).
+    const end = Object.values(l.vertices).find((v) => v.x === 1700 && v.y === 1400);
+    expect(end?.lines.length).toBe(1);
+    // No new room was formed.
+    expect(detectRoomCycles(l).length).toBe(2);
   });
 });
 
