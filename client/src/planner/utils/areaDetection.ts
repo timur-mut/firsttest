@@ -22,7 +22,10 @@
 
 import type { Area, Layer, Line, Point } from '../contract/types';
 import {
+  lerp,
   lineIntersection,
+  pointInPolygon,
+  pointsDistance,
   polygonArea,
   polygonCentroid,
   polygonPerimeter,
@@ -238,7 +241,10 @@ export interface RoomGeometry {
   outer: Point[];
   /** Inner boundary points (outer inset by wall thickness). */
   inner: Point[];
-  /** Inner (floor) area in world units². */
+  /**
+   * Inner (floor) area in world units², NET of the footprint of any interior
+   * non-closing walls (stubs / partial partitions) standing inside the room.
+   */
   area: number;
   /** Inner perimeter in world units. */
   perimeter: number;
@@ -372,6 +378,43 @@ function simplifyCollinear(poly: Point[]): Point[] {
   return out.length >= 3 ? out : poly;
 }
 
+/**
+ * Length of the segment a->b that lies inside `polygon`. Robust for non-convex
+ * polygons: split the segment at every crossing with a polygon edge, then sum
+ * the spans whose midpoint is inside. Used to subtract the footprint of interior
+ * non-closing walls from a room's floor (only the part actually standing on the
+ * floor counts — the part buried in the surrounding wall band is ignored).
+ */
+function segmentLengthInside(a: Point, b: Point, polygon: Point[]): number {
+  const total = pointsDistance(a, b);
+  if (total < EPS || polygon.length < 3) return 0;
+
+  const rx = b.x - a.x;
+  const ry = b.y - a.y;
+  const cuts = [0, 1];
+  for (let i = 0; i < polygon.length; i++) {
+    const c = polygon[i];
+    const d = polygon[(i + 1) % polygon.length];
+    const sx = d.x - c.x;
+    const sy = d.y - c.y;
+    const denom = rx * sy - ry * sx;
+    if (Math.abs(denom) < EPS) continue; // segment parallel to this edge
+    const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / denom;
+    const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / denom;
+    if (t > EPS && t < 1 - EPS && u >= -EPS && u <= 1 + EPS) cuts.push(t);
+  }
+  cuts.sort((p, q) => p - q);
+
+  let inside = 0;
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const t0 = cuts[i];
+    const t1 = cuts[i + 1];
+    if (t1 - t0 < EPS) continue;
+    if (pointInPolygon(lerp(a, b, (t0 + t1) / 2), polygon)) inside += (t1 - t0) * total;
+  }
+  return inside;
+}
+
 export function computeRooms(layer: Layer): RoomGeometry[] {
   const cycles = detectRoomCycles(layer);
 
@@ -383,6 +426,17 @@ export function computeRooms(layer: Layer): RoomGeometry[] {
       if (line) lineRoomCount.set(line.id, (lineRoomCount.get(line.id) ?? 0) + 1);
       return line;
     }),
+  );
+
+  // Interior "non-closing" walls: lines that bound no detected room (free stubs,
+  // partial partitions, tree branches). Their footprint where it falls inside a
+  // room's floor is subtracted from that room's area below.
+  const openWalls = Object.values(layer.lines).filter(
+    (l) =>
+      !lineRoomCount.has(l.id) &&
+      l.vertices[0] !== l.vertices[1] &&
+      !!layer.vertices[l.vertices[0]] &&
+      !!layer.vertices[l.vertices[1]],
   );
 
   return cycles.map((cycle, idx) => {
@@ -405,11 +459,22 @@ export function computeRooms(layer: Layer): RoomGeometry[] {
       walls.push({ lineId: line.id, quad: [outer[i], outer[j], ends[i], starts[i]] });
     }
 
+    // Subtract the footprint of interior non-closing walls standing on this
+    // floor: footprint ≈ (length inside the floor) × thickness.
+    let openWallArea = 0;
+    for (const w of openWalls) {
+      const a = layer.vertices[w.vertices[0]];
+      const b = layer.vertices[w.vertices[1]];
+      const insideLen = segmentLengthInside(a, b, floor);
+      if (insideLen > EPS) openWallArea += insideLen * w.thickness;
+    }
+    const area = Math.max(0, polygonArea(floor) - openWallArea);
+
     return {
       cycle,
       outer,
       inner: floor,
-      area: polygonArea(floor),
+      area,
       perimeter: polygonPerimeter(floor),
       walls,
       centroid: polygonCentroid(floor),
