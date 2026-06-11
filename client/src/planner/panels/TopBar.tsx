@@ -1,7 +1,7 @@
 // Top bar — owned by Unit 11 (Project management). Provides the app title, an
-// inline-editable project name, a "New" action, the File actions (Save / Open /
-// Export / Import) wired to the persistence module (Unit 9), zoom controls, and
-// the theme switcher. The File-action API and store action signatures are frozen.
+// inline-editable project name, a "New" action, the File actions (Save downloads
+// the scene as JSON, Open loads a JSON file) wired to the persistence module
+// (Unit 9), zoom controls, and the theme switcher.
 
 import { useEffect, useRef, useState } from 'react';
 import { Cloud, FolderOpen, Minus, PanelLeft, PanelRight, Plus } from 'lucide-react';
@@ -9,7 +9,7 @@ import { usePlannerStore } from '../store';
 import { usePanelStore } from './panelStore';
 import { cn } from '@/lib/utils';
 import { clamp, ZOOM_MAX, ZOOM_MIN } from '../config';
-import { exportToFile, importFromFile, loadFromLocal, saveToLocal } from '../persistence/storage';
+import { exportToFile, importFromFile } from '../persistence/storage';
 import { savePlanToServer, updatePlanOnServer } from '../persistence/api';
 import { referenceImageSnapshot, useReferenceImageStore } from '../store/referenceImageStore';
 import { getCurrentPlanId, router } from '@/app/router';
@@ -88,8 +88,9 @@ export function TopBar() {
     }
   }
 
+  // Save downloads the current scene as a JSON file.
   function onSave() {
-    saveToLocal(usePlannerStore.getState().scene);
+    exportToFile(usePlannerStore.getState().scene);
   }
 
   // Save to the database: update the bound plan, or create a new one.
@@ -116,14 +117,11 @@ export function TopBar() {
 
   const cloudLabel =
     cloud === 'saving' ? 'Saving…' : cloud === 'saved' ? 'Saved ✓' : cloud === 'error' ? 'Error' : 'Cloud Save';
+  // Open picks a JSON file from disk and loads it into the scene.
   function onOpen() {
-    const scene = loadFromLocal();
-    if (scene) usePlannerStore.getState().setScene(scene);
+    fileInput.current?.click();
   }
-  function onExport() {
-    exportToFile(usePlannerStore.getState().scene);
-  }
-  async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onOpenFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
@@ -199,14 +197,12 @@ export function TopBar() {
           <Button variant="ghost" size="sm" onClick={onNew}>New</Button>
           <Button variant="ghost" size="sm" onClick={onSave}>Save</Button>
           <Button variant="ghost" size="sm" onClick={onOpen}>Open</Button>
-          <Button variant="ghost" size="sm" onClick={onExport}>Export</Button>
-          <Button variant="ghost" size="sm" onClick={() => fileInput.current?.click()}>Import</Button>
           <input
             ref={fileInput}
             type="file"
             accept="application/json,.json"
             className="hidden"
-            onChange={onImportFile}
+            onChange={onOpenFile}
           />
         </div>
       </div>
