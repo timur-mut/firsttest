@@ -10,6 +10,7 @@ import { usePlannerStore } from '../../store';
 import { getSelectedLayer } from '../../store/helpers';
 import { computeRoomsCached, detectAreas } from '../../utils/areaDetection';
 import type { Unit } from '../../contract/types';
+import { FloorFill } from './FloorFill';
 
 /** World-unit² -> m² conversion factor for a given scene unit. */
 function unitToMetersSquared(unit: Unit): number {
@@ -66,6 +67,9 @@ export function AreasLayer() {
               data-el-id={area.id}
               data-el-kind="areas"
             />
+            {area.flooring && (
+              <FloorFill areaId={area.id} polygon={room.inner} flooring={area.flooring} />
+            )}
             <text
               x={room.centroid.x}
               y={room.centroid.y}

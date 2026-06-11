@@ -19,9 +19,11 @@ interface SerializedScene {
 /**
  * Serialize a scene to a JSON string.
  *
- * Derived `areas` are stripped from every layer: rooms are recomputed from
- * walls by area detection, so they are not authored data and only bloat the
- * file. Deserialize re-introduces `areas: {}` so the result is always valid.
+ * The derived geometry of each room (its `vertices`/`area`) is stripped from
+ * every layer: rooms are recomputed from walls by area detection, so persisting
+ * their geometry only bloats the file and risks going stale. The user OVERRIDES
+ * (name, color, flooring) are kept — keyed by the room's deterministic id, area
+ * detection re-attaches them on load.
  */
 export function serializeScene(scene: Scene): string {
   const payload: SerializedScene = {
@@ -131,11 +133,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Return a copy of the scene with every layer's derived `areas` emptied. */
+/**
+ * Return a copy of the scene where every room keeps only its user overrides
+ * (name/color/flooring), with the derived `vertices`/`area` dropped. The room's
+ * id (the map key) encodes its corner set, so detection re-matches the override
+ * to the recomputed room on load.
+ */
 function stripAreas(scene: Scene): Scene {
   const layers: Record<string, Layer> = {};
   for (const [id, layer] of Object.entries(scene.layers)) {
-    layers[id] = { ...layer, areas: {} };
+    const areas: Layer['areas'] = {};
+    for (const [areaId, area] of Object.entries(layer.areas)) {
+      areas[areaId] = {
+        id: area.id,
+        vertices: [],
+        area: 0,
+        color: area.color,
+        ...(area.name !== undefined ? { name: area.name } : {}),
+        ...(area.flooring !== undefined ? { flooring: area.flooring } : {}),
+      };
+    }
+    layers[id] = { ...layer, areas };
   }
   return { ...scene, layers };
 }

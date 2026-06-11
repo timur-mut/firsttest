@@ -12,6 +12,14 @@ import { usePlannerStore } from '../store';
 import { getSelectedLayer } from '../store/helpers';
 import { verticesDistance } from '../contract/geometry';
 import { detectAreas } from '../utils/areaDetection';
+import type { Flooring, FlooringType } from '../flooring/types';
+import {
+  FLOORING_ORDER,
+  FLOORING_SPECS,
+  PATTERN_LABELS,
+  makeFlooring,
+  type FlooringElement,
+} from '../flooring/catalog';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -46,6 +54,45 @@ function NumberInput({
       }}
     />
   );
+}
+
+/** Compact native <select>, styled to match the panel's inputs. */
+function SelectInput({
+  value,
+  onChange,
+  children,
+  'aria-label': ariaLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+  'aria-label'?: string;
+}) {
+  return (
+    <select
+      aria-label={ariaLabel}
+      className="h-8 w-full rounded-md border bg-transparent px-2 text-xs"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {children}
+    </select>
+  );
+}
+
+/** Noun used for an element's dimensions in the panel (e.g. "Plank width"). */
+function elementNoun(element: FlooringElement): string {
+  switch (element) {
+    case 'plank':
+      return 'Plank';
+    case 'sheet':
+      return 'Sheet';
+    case 'seamless':
+      return 'Surface';
+    case 'tile':
+    default:
+      return 'Tile';
+  }
 }
 
 /** Text input that commits on blur / Enter (one undo step, not per keystroke). */
@@ -273,6 +320,102 @@ export function PropertiesPanel({ onClose }: { onClose?: () => void } = {}) {
                   onChange={(e) => store.getState().setAreaColor(area.id, e.target.value)}
                 />
               </Field>
+
+              <Field label="Flooring">
+                <SelectInput
+                  aria-label="Flooring type"
+                  value={area.flooring?.type ?? ''}
+                  onChange={(value) =>
+                    store
+                      .getState()
+                      .setAreaFlooring(
+                        area.id,
+                        value === '' ? undefined : makeFlooring(value as FlooringType),
+                      )
+                  }
+                >
+                  <option value="">None</option>
+                  {FLOORING_ORDER.map((type) => (
+                    <option key={type} value={type}>
+                      {FLOORING_SPECS[type].label}
+                    </option>
+                  ))}
+                </SelectInput>
+              </Field>
+
+              {area.flooring &&
+                (() => {
+                  const f: Flooring = area.flooring;
+                  const spec = FLOORING_SPECS[f.type];
+                  const noun = elementNoun(spec.element);
+                  const update = (patch: Partial<Flooring>) =>
+                    store.getState().setAreaFlooring(area.id, { ...f, ...patch });
+                  const showSeams = f.pattern !== 'solid';
+                  return (
+                    <>
+                      {spec.patterns.length > 1 && (
+                        <Field label="Pattern">
+                          <SelectInput
+                            aria-label="Flooring pattern"
+                            value={f.pattern}
+                            onChange={(value) =>
+                              update({ pattern: value as Flooring['pattern'] })
+                            }
+                          >
+                            {spec.patterns.map((p) => (
+                              <option key={p} value={p}>
+                                {PATTERN_LABELS[p]}
+                              </option>
+                            ))}
+                          </SelectInput>
+                        </Field>
+                      )}
+                      {showSeams && (
+                        <>
+                          <Field label={`${noun} width`}>
+                            <NumberInput
+                              value={f.width}
+                              min={1}
+                              onCommit={(n) => update({ width: n })}
+                            />
+                          </Field>
+                          <Field label={`${noun} length`}>
+                            <NumberInput
+                              value={f.length}
+                              min={1}
+                              onCommit={(n) => update({ length: n })}
+                            />
+                          </Field>
+                          <Field label="Angle">
+                            <NumberInput
+                              value={f.angle}
+                              step={15}
+                              onCommit={(n) => update({ angle: n })}
+                            />
+                          </Field>
+                        </>
+                      )}
+                      <Field label="Floor color">
+                        <Input
+                          type="color"
+                          className="h-8 w-full p-1"
+                          value={f.color}
+                          onChange={(e) => update({ color: e.target.value })}
+                        />
+                      </Field>
+                      {showSeams && (
+                        <Field label="Seam color">
+                          <Input
+                            type="color"
+                            className="h-8 w-full p-1"
+                            value={f.seamColor}
+                            onChange={(e) => update({ seamColor: e.target.value })}
+                          />
+                        </Field>
+                      )}
+                    </>
+                  );
+                })()}
             </section>
           )}
 

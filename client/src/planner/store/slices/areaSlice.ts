@@ -7,6 +7,7 @@
 // the room's corners are unchanged.
 
 import type { Area, Layer } from '../../contract/types';
+import type { Flooring } from '../../flooring/types';
 import { detectAreas } from '../../utils/areaDetection';
 import type { SliceCreator } from '../storeTypes';
 import { getSelectedLayer } from '../helpers';
@@ -16,6 +17,8 @@ export interface AreaSlice {
   setAreaColor(areaId: string, color: string): void;
   /** Set (or clear) a room's user label. */
   setAreaName(areaId: string, name: string): void;
+  /** Set the room's floor covering, or clear it by passing `undefined`. */
+  setAreaFlooring(areaId: string, flooring: Flooring | undefined): void;
 }
 
 /** Apply a metadata patch to a room, creating the record if it doesn't exist. */
@@ -38,5 +41,10 @@ export const createAreaSlice: SliceCreator<AreaSlice> = (mutate) => ({
   setAreaName: (areaId, name) =>
     mutate((draft) => {
       upsertArea(getSelectedLayer(draft.scene), areaId, { name: name.trim() });
+    }),
+
+  setAreaFlooring: (areaId, flooring) =>
+    mutate((draft) => {
+      upsertArea(getSelectedLayer(draft.scene), areaId, { flooring });
     }),
 });
